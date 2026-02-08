@@ -1,0 +1,29 @@
+includes:
+  - vendor/nunomaduro/larastan/extension.neon
+
+parameters:
+  level: 5
+  
+  paths:
+    - app
+    - config
+    - database/factories
+    - database/seeders
+    - routes
+    - tests
+
+  excludePaths:
+    - app/Exceptions
+    - vendor/*
+    - node_modules/*
+
+  ignoreErrors:
+    # Laravel helpers are dynamically resolved
+    - '#Undefined function.*\(now|auth|config|route|dispatch|event\)#'
+    - '#Undefined type.*App\\Models#'
+    - '#Call to undefined method.*role\(\)#'
+    - '#Call to an undefined method.*fresh\(\)#'
+    - '#Undefined constant.*DIRECTORY_SEPARATOR#'
+
+  checkGenericClassInNonGenericObjectType: false
+  checkMissingIterableValueType: false
