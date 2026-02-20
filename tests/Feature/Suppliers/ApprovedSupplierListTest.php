@@ -305,7 +305,7 @@ class ApprovedSupplierListTest extends TestCase
         $process = $service->createRFQ([
             'title'            => 'Test RFQ',
             'description'      => 'Test RFQ',
-            'budget_allocation'=> 30000,
+            'budget_allocation' => 30000,
             'supplier_ids'     => [$supplier->id],
         ]);
 
@@ -328,7 +328,7 @@ class ApprovedSupplierListTest extends TestCase
         $service->createRFQ([
             'title'            => 'Test RFQ',
             'description'      => 'Test RFQ',
-            'budget_allocation'=> 30000,
+            'budget_allocation' => 30000,
             'supplier_ids'     => [$supplier->id],
         ]);
     }

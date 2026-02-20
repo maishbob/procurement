@@ -35,7 +35,7 @@ class ProcurementService
                 $band = $this->governanceRules->determineCashBand($amount);
                 throw new Exception(
                     "This purchase value (KES " . number_format($amount, 2) . ") falls in the '{$band['label']}' band " .
-                    "and requires a {$required} — an RFQ is not permitted."
+                        "and requires a {$required} — an RFQ is not permitted."
                 );
             }
         }
@@ -87,7 +87,7 @@ class ProcurementService
                 $band = $this->governanceRules->determineCashBand($amount);
                 throw new Exception(
                     "This purchase value (KES " . number_format($amount, 2) . ") falls in the '{$band['label']}' band " .
-                    "and requires a formal tender — an RFP is not permitted."
+                        "and requires a formal tender — an RFP is not permitted."
                 );
             }
         }
@@ -165,7 +165,7 @@ class ProcurementService
     public function publishProcess(ProcurementProcess $process): ProcurementProcess
     {
         // Set status based on process type
-        $status = match($process->type) {
+        $status = match ($process->type) {
             'rfq' => 'rfq_issued',
             'rfp' => 'rfq_issued',  // or create separate rfp_issued status
             'tender' => 'rfq_issued',
@@ -253,7 +253,7 @@ class ProcurementService
                 $band = $this->governanceRules->determineCashBand($amount);
                 throw new Exception(
                     "Evaluation blocked — {$minQuotes} quote(s) required for the '{$band['label']}' band; " .
-                    "only {$bidCount} received."
+                        "only {$bidCount} received."
                 );
             }
         }
@@ -271,7 +271,7 @@ class ProcurementService
             if (ConflictOfInterestDeclaration::hasConflict($evaluatorId, get_class($bid->supplier), $bid->supplier_id)) {
                 throw new Exception(
                     "Evaluation blocked: You have declared a conflict of interest with supplier '{$bid->supplier->name}'. " .
-                    "Please recuse yourself from this evaluation."
+                        "Please recuse yourself from this evaluation."
                 );
             }
 
@@ -482,7 +482,7 @@ class ProcurementService
     public function awardTender(ProcurementProcess $process, int $winningBidId, string $awardCriteria, $user): void
     {
         $this->awardContract($process, $winningBidId);
-        
+
         // Log the award criteria
         $this->auditService->log(
             action: 'TENDER_AWARD_CRITERIA',
@@ -519,7 +519,7 @@ class ProcurementService
     protected function enforceConflictOfInterestCheck(ProcurementProcess $process, int $evaluatorId): void
     {
         $coiEnabled = config('procurement.governance.conflict_of_interest.enforce', true);
-        
+
         if (!$coiEnabled) {
             return;
         }
@@ -528,20 +528,20 @@ class ProcurementService
         if (ConflictOfInterestDeclaration::hasConflict($evaluatorId, get_class($process), $process->id)) {
             throw new Exception(
                 "Evaluation blocked: You have declared a conflict of interest with this procurement process. " .
-                "Please recuse yourself from participating in this evaluation. " .
-                "Contact your supervisor if you believe this is in error."
+                    "Please recuse yourself from participating in this evaluation. " .
+                    "Contact your supervisor if you believe this is in error."
             );
         }
 
         // Check if evaluator has conflicts with any participating suppliers
         $supplierIds = $process->bids()->pluck('supplier_id')->toArray();
-        
+
         foreach ($supplierIds as $supplierId) {
             if (ConflictOfInterestDeclaration::hasConflict($evaluatorId, 'App\\Modules\\Finance\\Models\\Supplier', $supplierId)) {
                 $supplier = \App\Modules\Finance\Models\Supplier::find($supplierId);
                 throw new Exception(
                     "Evaluation blocked: You have declared a conflict of interest with supplier '{$supplier->name}' " .
-                    "who has submitted a bid for this procurement. You must recuse yourself from this evaluation."
+                        "who has submitted a bid for this procurement. You must recuse yourself from this evaluation."
                 );
             }
         }

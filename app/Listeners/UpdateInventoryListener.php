@@ -68,7 +68,7 @@ class UpdateInventoryListener
         // Update stock quantity
         $oldQty = $stockLevel->quantity_on_hand;
         $newQty = $oldQty + $grnItem->quantity_received;
-        
+
         $stockLevel->update([
             'quantity_on_hand' => $newQty,
             'quantity_available' => $newQty - $stockLevel->quantity_allocated,

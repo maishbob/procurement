@@ -285,7 +285,7 @@ class CapaService
 
         return DB::transaction(function () use ($capa, $passed, $comments) {
             $newStatus = $passed ? 'verified' : 'in_progress';
-            
+
             $this->workflowEngine->transition(
                 $capa,
                 'capa',

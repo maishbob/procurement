@@ -148,30 +148,30 @@ class KpiDashboardService
     protected function getComplianceKpis(Carbon $startDate, Carbon $endDate): array
     {
         $totalPOs = PurchaseOrder::whereBetween('created_at', [$startDate, $endDate])->count();
-        
+
         // 3-way match compliance
         $invoicesWithMatch = SupplierInvoice::whereBetween('created_at', [$startDate, $endDate])
             ->where('three_way_match_passed', true)
             ->count();
-        
+
         $totalInvoices = SupplierInvoice::whereBetween('created_at', [$startDate, $endDate])->count();
-        
+
         $matchComplianceRate = $totalInvoices > 0 ? ($invoicesWithMatch / $totalInvoices) * 100 : 0;
 
         // eTIMS compliance
         $invoicesWithEtims = SupplierInvoice::whereBetween('created_at', [$startDate, $endDate])
             ->whereNotNull('etims_control_number')
             ->count();
-        
+
         $etimsComplianceRate = $totalInvoices > 0 ? ($invoicesWithEtims / $totalInvoices) * 100 : 0;
 
         // Threshold compliance (proper approvals)
         $requisitionsWithProperApproval = Requisition::whereBetween('created_at', [$startDate, $endDate])
             ->whereNotNull('approved_by')
             ->count();
-        
+
         $totalRequisitions = Requisition::whereBetween('created_at', [$startDate, $endDate])->count();
-        
+
         $approvalComplianceRate = $totalRequisitions > 0 ? ($requisitionsWithProperApproval / $totalRequisitions) * 100 : 0;
 
         return [
@@ -219,7 +219,7 @@ class KpiDashboardService
     protected function getPaymentEfficiencyKpis(Carbon $startDate, Carbon $endDate): array
     {
         $payments = Payment::whereBetween('created_at', [$startDate, $endDate])->get();
-        
+
         $completedPayments = $payments->where('status', 'completed');
         $averageProcessingDays = $completedPayments->map(function ($payment) {
             if (!$payment->created_at || !$payment->processed_at) {
@@ -256,7 +256,7 @@ class KpiDashboardService
     protected function getProcessEfficiencyKpis(Carbon $startDate, Carbon $endDate): array
     {
         $requisitions = Requisition::whereBetween('created_at', [$startDate, $endDate])->get();
-        
+
         return [
             'total_requisitions' => $requisitions->count(),
             'approved_requisitions' => $requisitions->whereIn('status', ['hod_approved', 'budget_approved', 'procurement_queue', 'completed'])->count(),
@@ -323,7 +323,7 @@ class KpiDashboardService
     public function getQuarterlyKpis(string $fiscalYear, string $quarter): array
     {
         list($startYear, $endYear) = explode('/', $fiscalYear);
-        
+
         $quarterDates = [
             'Q1' => [Carbon::create($startYear, 7, 1), Carbon::create($startYear, 9, 30)],
             'Q2' => [Carbon::create($startYear, 10, 1), Carbon::create($startYear, 12, 31)],

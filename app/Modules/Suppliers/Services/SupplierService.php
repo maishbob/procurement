@@ -61,7 +61,7 @@ class SupplierService
             $problems = array_filter([$missing ? "Missing: {$missing}" : null, $expired ? "Expired: {$expired}" : null]);
             throw new Exception(
                 "Cannot approve supplier '{$supplier->display_name}' — onboarding incomplete. " .
-                implode('; ', $problems) . '.'
+                    implode('; ', $problems) . '.'
             );
         }
 
@@ -69,9 +69,9 @@ class SupplierService
             'asl_status'       => 'approved',
             'asl_approved_at'  => now(),
             'asl_approved_by'  => $approver->id,
-            'asl_review_due_at'=> now()->addYear(),
+            'asl_review_due_at' => now()->addYear(),
             'asl_categories'   => $categories ?: $supplier->asl_categories,
-            'onboarding_status'=> 'approved',
+            'onboarding_status' => 'approved',
         ]);
 
         $this->auditService->log(

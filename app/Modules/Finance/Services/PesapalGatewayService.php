@@ -34,7 +34,7 @@ class PesapalGatewayService
     public function initiatePayment(Payment $payment): PaymentGatewayTransaction
     {
         $userId = Auth::id();
-        
+
         // Check if user has initiator role
         if (!PaymentGatewayRole::userHasRole($userId, $this->provider, 'initiator')) {
             throw new Exception("User does not have permission to initiate PesaPal payments");
@@ -108,7 +108,7 @@ class PesapalGatewayService
     public function approvePayment(PaymentGatewayTransaction $transaction): PaymentGatewayTransaction
     {
         $userId = Auth::id();
-        
+
         // Check if user has approver role
         if (!PaymentGatewayRole::userHasRole($userId, $this->provider, 'approver')) {
             throw new Exception("User does not have permission to approve PesaPal payments");
@@ -145,7 +145,7 @@ class PesapalGatewayService
     public function processPayment(PaymentGatewayTransaction $transaction): PaymentGatewayTransaction
     {
         $userId = Auth::id();
-        
+
         // Check if user has processor role
         if (!PaymentGatewayRole::userHasRole($userId, $this->provider, 'processor')) {
             throw new Exception("User does not have permission to process PesaPal payments");
@@ -203,7 +203,7 @@ class PesapalGatewayService
     public function reconcilePayment(PaymentGatewayTransaction $transaction): PaymentGatewayTransaction
     {
         $userId = Auth::id();
-        
+
         // Check if user has reconciler role
         if (!PaymentGatewayRole::userHasRole($userId, $this->provider, 'reconciler')) {
             throw new Exception("User does not have permission to reconcile PesaPal payments");
@@ -242,7 +242,7 @@ class PesapalGatewayService
     public function assignRole(int $userId, string $roleType, array $permissions = []): PaymentGatewayRole
     {
         $assignerId = Auth::id();
-        
+
         // Only admins can assign roles
         if (!PaymentGatewayRole::userHasRole($assignerId, $this->provider, 'admin')) {
             throw new Exception("Only PesaPal admins can assign roles");
@@ -270,7 +270,7 @@ class PesapalGatewayService
     public function revokeRole(int $userId, string $roleType): void
     {
         $assignerId = Auth::id();
-        
+
         // Only admins can revoke roles
         if (!PaymentGatewayRole::userHasRole($assignerId, $this->provider, 'admin')) {
             throw new Exception("Only PesaPal admins can revoke roles");
@@ -314,14 +314,14 @@ class PesapalGatewayService
     public function getUserCapabilities(int $userId): array
     {
         $roles = PaymentGatewayRole::getUserRoles($userId, $this->provider);
-        
+
         $capabilities = [];
         foreach ($roles as $role) {
             $roleModel = PaymentGatewayRole::where('user_id', $userId)
                 ->where('gateway_provider', $this->provider)
                 ->where('role_type', $role)
                 ->first();
-            
+
             if ($roleModel) {
                 $capabilities[$role] = $roleModel->permissions ?? [];
             }
