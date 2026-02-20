@@ -4,83 +4,57 @@ namespace App\Listeners;
 
 use App\Events\LowStockDetectedEvent;
 use App\Jobs\SendEmailNotificationJob;
+use App\Models\User;
 use App\Notifications\LowStockNotification;
 
 class NotifyStoreManagerListener
 {
-    /**
-     * Handle the event.
-     */
     public function handle(LowStockDetectedEvent $event): void
     {
         $inventoryItem = $event->inventoryItem;
-        
-        // Get store from stock levels - use first store where this item has low stock
-        $reorderPoint = $inventoryItem->reorder_point ?? 0;
-        $stockLevel = $inventoryItem->stockLevels()
-            ->where('quantity_on_hand', '<=', $reorderPoint)
-            ->with('store')
-            ->first();
-        
-        if (!$stockLevel || !$stockLevel->store) {
-            return;
-        }
-        
-        $store = $stockLevel->store;
 
-        // Find store manager - check if store has assigned store_keeper
+        // Find the Stores Manager — check the specific store first, then fall back to any Stores Manager
         $storeManager = null;
-        if ($store->store_keeper_id) {
-            $storeManager = \App\Models\User::find($store->store_keeper_id);
-        }
-        
-        if (!$storeManager) {
-            // Find any store manager by role
-            $storeManager = \App\Models\User::whereHas('roles', function ($query) {
-                $query->whereIn('name', ['store_manager', 'store_keeper']);
-            })->first();
+        $store = $inventoryItem->store ?? null;
+
+        if ($store && $store->store_keeper_id) {
+            $storeManager = User::active()->find($store->store_keeper_id);
         }
 
         if (!$storeManager) {
-            return;
+            $storeManager = User::active()
+                ->whereHas('roles', fn ($q) => $q->where('name', 'Stores Manager'))
+                ->first();
         }
 
-        // Send low stock alert
-        dispatch(new SendEmailNotificationJob(
-            $storeManager,
-            new LowStockNotification($inventoryItem, $event->quantityOnHand, $event->reorderLevel)
-        ));
+        $notification = new LowStockNotification($inventoryItem, $event->quantityOnHand, $event->reorderLevel);
 
-        // Also notify procurement team for reordering
-        $procurementUsers = \App\Models\User::whereHas('roles', function ($query) {
-            $query->whereIn('name', ['procurement', 'procurement_officer', 'manager']);
-        })->get();
+        if ($storeManager) {
+            dispatch(new SendEmailNotificationJob($storeManager, $notification));
+        }
+
+        // Notify Procurement Officer and Procurement Assistant to initiate reordering
+        $procurementUsers = User::active()
+            ->whereHas('roles', fn ($q) => $q->whereIn('name', ['Procurement Officer', 'Procurement Assistant']))
+            ->get();
 
         foreach ($procurementUsers as $user) {
-            dispatch(new SendEmailNotificationJob(
-                $user,
-                new LowStockNotification($inventoryItem, $event->quantityOnHand, $event->reorderLevel)
-            ));
+            if (!$storeManager || $user->id !== $storeManager->id) {
+                dispatch(new SendEmailNotificationJob($user, $notification));
+            }
         }
 
-        // Audit log
-        \App\Core\Audit\AuditService::log(
+        app(\App\Core\Audit\AuditService::class)->log(
             action: 'LOW_STOCK_ALERT_SENT',
-            status: 'success',
-            model_type: 'InventoryItem',
-            model_id: $inventoryItem->id,
-            description: "Low stock alert sent for {$inventoryItem->catalogItem?->name}",
+            model: 'InventoryItem',
+            modelId: $inventoryItem->id,
             metadata: [
-                'inventory_item_id' => $inventoryItem->id,
-                'item_name' => $inventoryItem->catalogItem?->name,
-                'quantity_on_hand' => $event->quantityOnHand,
-                'reorder_level' => $event->reorderLevel,
-                'store_id' => $store->id,
-                'recipients' => [
-                    'store_manager' => $storeManager->email,
-                    'procurement_count' => $procurementUsers->count(),
-                ]
-            ]
+                'item_name'          => $inventoryItem->catalogItem?->description ?? $inventoryItem->catalogItem?->name,
+                'quantity_on_hand'   => $event->quantityOnHand,
+                'reorder_level'      => $event->reorderLevel,
+                'store_manager'      => $storeManager?->email,
+                'procurement_count'  => $procurementUsers->count(),
+            ],
         );
     }
 }

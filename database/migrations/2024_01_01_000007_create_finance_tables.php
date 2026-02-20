@@ -283,12 +283,45 @@ return new class extends Migration
 
     public function down(): void
     {
+        \DB::statement('SET FOREIGN_KEY_CHECKS=0');
         Schema::dropIfExists('notifications');
         Schema::dropIfExists('payment_approvals');
-        Schema::dropIfExists('wht_certificates');
-        Schema::dropIfExists('payment_invoices');
+        // Drop payment_invoices and wht_certificates before payments (FK)
+        if (Schema::hasTable('payment_invoices')) {
+            Schema::dropIfExists('payment_invoices');
+        }
+        if (Schema::hasTable('wht_certificates')) {
+            Schema::dropIfExists('wht_certificates');
+        }
+        // Drop payment_gateway_* tables before payments (foreign key)
+        if (Schema::hasTable('payment_gateway_audit_log')) {
+            Schema::dropIfExists('payment_gateway_audit_log');
+        }
+        if (Schema::hasTable('payment_gateway_transactions')) {
+            Schema::dropIfExists('payment_gateway_transactions');
+        }
+        if (Schema::hasTable('payment_gateway_roles')) {
+            Schema::dropIfExists('payment_gateway_roles');
+        }
         Schema::dropIfExists('payments');
         Schema::dropIfExists('supplier_invoice_items');
         Schema::dropIfExists('supplier_invoices');
+        // Drop supplier sub-tables if they exist (to avoid FK issues on suppliers)
+        if (Schema::hasTable('supplier_blacklist_history')) {
+            Schema::dropIfExists('supplier_blacklist_history');
+        }
+        if (Schema::hasTable('supplier_categories')) {
+            Schema::dropIfExists('supplier_categories');
+        }
+        if (Schema::hasTable('supplier_performance_reviews')) {
+            Schema::dropIfExists('supplier_performance_reviews');
+        }
+        if (Schema::hasTable('supplier_contacts')) {
+            Schema::dropIfExists('supplier_contacts');
+        }
+        if (Schema::hasTable('supplier_documents')) {
+            Schema::dropIfExists('supplier_documents');
+        }
+        \DB::statement('SET FOREIGN_KEY_CHECKS=1');
     }
 };

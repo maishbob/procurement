@@ -27,12 +27,14 @@ class DatabaseSeeder extends Seeder
         // Seed roles and permissions
         $this->call(RolesAndPermissionsSeeder::class);
 
+
+
         // Create default admin user
         $adminUser = User::firstOrCreate(
             ['email' => 'admin@procurement.local'],
             [
                 'name' => 'System Administrator',
-                'password' => 'password',
+                'password' => env('SEED_DEFAULT_PASSWORD', \Illuminate\Support\Str::random(24)),
                 'email_verified_at' => now(),
                 'is_active' => true,
             ]
@@ -48,7 +50,7 @@ class DatabaseSeeder extends Seeder
             ['email' => 'finance@procurement.local'],
             [
                 'name' => 'Finance Officer',
-                'password' => 'password',
+                'password' => env('SEED_DEFAULT_PASSWORD', \Illuminate\Support\Str::random(24)),
                 'email_verified_at' => now(),
                 'is_active' => true,
             ]
@@ -63,7 +65,7 @@ class DatabaseSeeder extends Seeder
             ['email' => 'procurement@procurement.local'],
             [
                 'name' => 'Procurement Officer',
-                'password' => 'password',
+                'password' => env('SEED_DEFAULT_PASSWORD', \Illuminate\Support\Str::random(24)),
                 'email_verified_at' => now(),
                 'is_active' => true,
             ]
@@ -78,7 +80,7 @@ class DatabaseSeeder extends Seeder
             ['email' => 'depthead@procurement.local'],
             [
                 'name' => 'Department Head',
-                'password' => 'password',
+                'password' => env('SEED_DEFAULT_PASSWORD', \Illuminate\Support\Str::random(24)),
                 'email_verified_at' => now(),
                 'is_active' => true,
             ]
@@ -102,6 +104,9 @@ class DatabaseSeeder extends Seeder
                 $dept
             );
         }
+
+        // Assign PesaPal gateway roles based on Spatie roles
+        $this->call(PaymentGatewayRoleSeeder::class);
 
         $this->command->info('Database seeding completed successfully!');
     }

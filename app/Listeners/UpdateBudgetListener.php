@@ -32,24 +32,27 @@ class UpdateBudgetListener
                 'PurchaseOrder'
             );
 
-            \App\Core\Audit\AuditService::log(
-                action: 'BUDGET_COMMITTED',
-                status: 'success',
-                model_type: 'BudgetTransaction',
-                model_id: $requisition->budget_line_id,
-                description: "Budget committed for PO {$purchaseOrder->po_number}",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'BUDGET_COMMITTED',
+                'BudgetTransaction',
+                $requisition->budget_line_id,
+                null,
+                null,
+                "Budget committed for PO {$purchaseOrder->po_number}",
+                [
                     'po_id' => $purchaseOrder->id,
                     'amount' => $purchaseOrder->total_amount,
                 ]
             );
         } catch (\Exception $e) {
-            \App\Core\Audit\AuditService::log(
-                action: 'BUDGET_COMMITMENT_FAILED',
-                status: 'failed',
-                model_type: 'BudgetTransaction',
-                description: "Failed to commit budget for PO: {$e->getMessage()}",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'BUDGET_COMMITMENT_FAILED',
+                'BudgetTransaction',
+                null,
+                null,
+                null,
+                "Failed to commit budget for PO: {$e->getMessage()}",
+                [
                     'error' => $e->getMessage(),
                 ]
             );
@@ -85,24 +88,27 @@ class UpdateBudgetListener
                 }
             }
 
-            \App\Core\Audit\AuditService::log(
-                action: 'BUDGET_ADJUSTED',
-                status: 'success',
-                model_type: 'BudgetTransaction',
-                model_id: $budgetLine->id,
-                description: "Budget adjusted for invoice variance",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'BUDGET_ADJUSTED',
+                'BudgetTransaction',
+                $budgetLine->id,
+                null,
+                null,
+                "Budget adjusted for invoice variance",
+                [
                     'invoice_id' => $invoice->id,
                     'variance_amount' => $difference,
                 ]
             );
         } catch (\Exception $e) {
-            \App\Core\Audit\AuditService::log(
-                action: 'BUDGET_ADJUSTMENT_FAILED',
-                status: 'failed',
-                model_type: 'BudgetTransaction',
-                description: "Failed to adjust budget for invoice: {$e->getMessage()}",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'BUDGET_ADJUSTMENT_FAILED',
+                'BudgetTransaction',
+                null,
+                null,
+                null,
+                "Failed to adjust budget for invoice: {$e->getMessage()}",
+                [
                     'error' => $e->getMessage(),
                 ]
             );
@@ -138,24 +144,28 @@ class UpdateBudgetListener
                 );
             }
 
-            \App\Core\Audit\AuditService::log(
-                action: 'BUDGET_EXECUTED',
-                status: 'success',
-                model_type: 'BudgetTransaction',
-                description: "Budget executed for payment {$payment->reference_number}",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'BUDGET_EXECUTED',
+                'BudgetTransaction',
+                null,
+                null,
+                null,
+                "Budget executed for payment {$payment->reference_number}",
+                [
                     'payment_id' => $payment->id,
                     'amount' => $payment->amount,
                     'budget_lines' => $budgetLines->count(),
                 ]
             );
         } catch (\Exception $e) {
-            \App\Core\Audit\AuditService::log(
-                action: 'BUDGET_EXECUTION_FAILED',
-                status: 'failed',
-                model_type: 'BudgetTransaction',
-                description: "Failed to execute budget for payment: {$e->getMessage()}",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'BUDGET_EXECUTION_FAILED',
+                'BudgetTransaction',
+                null,
+                null,
+                null,
+                "Failed to execute budget for payment: {$e->getMessage()}",
+                [
                     'error' => $e->getMessage(),
                 ]
             );

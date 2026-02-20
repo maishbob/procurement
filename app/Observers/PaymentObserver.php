@@ -15,17 +15,17 @@ class PaymentObserver
     public function created(Payment $payment): void
     {
         $this->auditService->log(
-            action: 'PAYMENT_CREATED',
-            status: 'success',
-            model_type: 'Payment',
-            model_id: $payment->id,
-            description: "Payment created for {$payment->invoices()->count()} invoice(s) totaling KES " . number_format($payment->total_amount, 2),
-            changes: [
+            'PAYMENT_CREATED',
+            'Payment',
+            $payment->id,
+            null,
+            [
                 'status' => 'draft',
                 'total_amount' => $payment->total_amount,
                 'wht_amount' => $payment->wht_amount,
                 'payment_method' => $payment->payment_method,
-            ]
+            ],
+            "Payment created for {$payment->invoices()->count()} invoice(s) totaling KES " . number_format($payment->total_amount, 2)
         );
     }
 
@@ -35,13 +35,13 @@ class PaymentObserver
     public function submitted(Payment $payment): void
     {
         $this->auditService->log(
-            action: 'PAYMENT_SUBMITTED',
-            status: 'success',
-            model_type: 'Payment',
-            model_id: $payment->id,
-            description: "Payment submitted for approval. Total: KES " . number_format($payment->total_amount, 2) . ", WHT: KES " . number_format($payment->wht_amount, 2),
-            changes: ['status' => ['from' => 'draft', 'to' => 'pending_approval']],
-            metadata: [
+            'PAYMENT_SUBMITTED',
+            'Payment',
+            $payment->id,
+            ['status' => ['from' => 'draft', 'to' => 'pending_approval']],
+            null,
+            "Payment submitted for approval. Total: KES " . number_format($payment->total_amount, 2) . ", WHT: KES " . number_format($payment->wht_amount, 2),
+            [
                 'submitted_by' => auth()?->id(),
                 'submission_date' => now(),
             ]
@@ -54,13 +54,13 @@ class PaymentObserver
     public function approved(Payment $payment): void
     {
         $this->auditService->log(
-            action: 'PAYMENT_APPROVED',
-            status: 'success',
-            model_type: 'Payment',
-            model_id: $payment->id,
-            description: "Payment approved. Total: KES " . number_format($payment->total_amount, 2),
-            changes: ['status' => ['from' => 'pending_approval', 'to' => 'approved']],
-            metadata: [
+            'PAYMENT_APPROVED',
+            'Payment',
+            $payment->id,
+            ['status' => ['from' => 'pending_approval', 'to' => 'approved']],
+            null,
+            "Payment approved. Total: KES " . number_format($payment->total_amount, 2),
+            [
                 'approved_by' => auth()?->id(),
                 'approval_date' => now(),
             ]
@@ -73,13 +73,13 @@ class PaymentObserver
     public function rejected(Payment $payment): void
     {
         $this->auditService->log(
-            action: 'PAYMENT_REJECTED',
-            status: 'success',
-            model_type: 'Payment',
-            model_id: $payment->id,
-            description: "Payment rejected",
-            changes: ['status' => ['from' => 'pending_approval', 'to' => 'rejected']],
-            metadata: [
+            'PAYMENT_REJECTED',
+            'Payment',
+            $payment->id,
+            ['status' => ['from' => 'pending_approval', 'to' => 'rejected']],
+            null,
+            "Payment rejected",
+            [
                 'rejection_reason' => $payment->rejection_reason,
                 'rejected_by' => auth()?->id(),
             ]
@@ -92,13 +92,13 @@ class PaymentObserver
     public function processed(Payment $payment): void
     {
         $this->auditService->log(
-            action: 'PAYMENT_PROCESSED',
-            status: 'success',
-            model_type: 'Payment',
-            model_id: $payment->id,
-            description: "Payment processed via {$payment->payment_method}. Total: KES " . number_format($payment->total_amount, 2),
-            changes: ['status' => ['from' => 'approved', 'to' => 'processed']],
-            metadata: [
+            'PAYMENT_PROCESSED',
+            'Payment',
+            $payment->id,
+            ['status' => ['from' => 'approved', 'to' => 'processed']],
+            null,
+            "Payment processed via {$payment->payment_method}. Total: KES " . number_format($payment->total_amount, 2),
+            [
                 'processed_by' => auth()?->id(),
                 'processing_date' => now(),
                 'payment_reference' => $payment->payment_reference,
@@ -112,13 +112,13 @@ class PaymentObserver
     public function reconciled(Payment $payment): void
     {
         $this->auditService->log(
-            action: 'PAYMENT_RECONCILED',
-            status: 'success',
-            model_type: 'Payment',
-            model_id: $payment->id,
-            description: "Payment reconciled with bank statement",
-            changes: ['status' => ['from' => 'processed', 'to' => 'reconciled']],
-            metadata: [
+            'PAYMENT_RECONCILED',
+            'Payment',
+            $payment->id,
+            ['status' => ['from' => 'processed', 'to' => 'reconciled']],
+            null,
+            "Payment reconciled with bank statement",
+            [
                 'reconciled_by' => auth()?->id(),
                 'reconciliation_date' => now(),
             ]
@@ -139,12 +139,12 @@ class PaymentObserver
 
         if (!empty($changes)) {
             $this->auditService->log(
-                action: 'PAYMENT_UPDATED',
-                status: 'success',
-                model_type: 'Payment',
-                model_id: $payment->id,
-                description: "Payment updated",
-                changes: $changes
+                'PAYMENT_UPDATED',
+                'Payment',
+                $payment->id,
+                $changes,
+                null,
+                "Payment updated"
             );
         }
     }
@@ -155,12 +155,12 @@ class PaymentObserver
     public function deleted(Payment $payment): void
     {
         $this->auditService->log(
-            action: 'PAYMENT_DELETED',
-            status: 'success',
-            model_type: 'Payment',
-            model_id: $payment->id,
-            description: "Payment permanently deleted",
-            changes: ['deleted_by' => auth()?->id()]
+            'PAYMENT_DELETED',
+            'Payment',
+            $payment->id,
+            ['deleted_by' => auth()?->id()],
+            null,
+            "Payment permanently deleted"
         );
     }
 }

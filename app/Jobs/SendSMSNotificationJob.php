@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Core\Audit\AuditService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,81 +14,61 @@ class SendSMSNotificationJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected int $tries = 3;
-    protected int $backoff = 60;
+    public int $tries   = 3;
+    public int $backoff = 60;
 
     public function __construct(
-        protected User $user,
+        protected User   $user,
         protected string $message,
         protected string $type = 'notification'
     ) {}
 
-    /**
-     * Execute the job.
-     */
-    public function handle(): void
+    public function handle(AuditService $auditService): void
     {
         try {
-            // Check if user has SMS notification enabled
-            $preferences = $this->user->getUserPreferences();
-            if (!($preferences['notification_sms'] ?? true)) {
+            // Respect per-user SMS preference
+            if (!($this->user->getUserPreferences()['notification_sms'] ?? false)) {
                 return;
             }
 
-            // Check if user has phone number
             if (!$this->user->phone) {
                 throw new \Exception('User has no phone number on file');
             }
 
-            // Send SMS via configured provider (Twilio, Africastalking, etc)
-            $smsProvider = config('procurement.sms_provider', 'twilio');
-
-            if ($smsProvider === 'twilio') {
-                $this->sendViaTwilio();
-            } elseif ($smsProvider === 'africastalking') {
-                $this->sendViaAfricasTalking();
-            } else {
-                throw new \Exception("SMS provider '{$smsProvider}' not configured");
+            if (!config('procurement.notifications.sms_enabled', env('NOTIFY_SMS_ENABLED', false))) {
+                return; // SMS globally disabled
             }
 
-            // Log successful delivery
-            \App\Core\Audit\AuditService::log(
+            $provider = config('services.sms.driver', env('SMS_DRIVER', 'africastalking'));
+
+            match ($provider) {
+                'twilio'         => $this->sendViaTwilio(),
+                'africastalking' => $this->sendViaAfricasTalking(),
+                default          => throw new \Exception("SMS provider '{$provider}' is not configured"),
+            };
+
+            $auditService->log(
                 action: 'SMS_SENT',
-                status: 'success',
-                model_type: 'Notification',
-                model_id: $this->user->id,
-                description: "SMS notification sent to {$this->user->phone}",
-                metadata: [
-                    'type' => $this->type,
-                    'phone' => $this->user->phone,
-                    'provider' => $smsProvider,
-                ]
+                model: 'Notification',
+                modelId: $this->user->id,
+                metadata: ['type' => $this->type, 'phone' => $this->user->phone, 'provider' => $provider],
             );
         } catch (\Exception $e) {
-            // Log failure
-            \App\Core\Audit\AuditService::log(
+            $auditService->log(
                 action: 'SMS_FAILED',
-                status: 'failed',
-                model_type: 'Notification',
-                model_id: $this->user->id,
-                description: "Failed to send SMS to {$this->user->phone}: {$e->getMessage()}",
-                metadata: [
-                    'type' => $this->type,
-                    'error' => $e->getMessage(),
-                ]
+                model: 'Notification',
+                modelId: $this->user->id,
+                metadata: ['type' => $this->type, 'error' => $e->getMessage()],
             );
 
             if ($this->attempts() < $this->tries) {
-                $this->release(60);
+                $this->release($this->backoff);
             } else {
                 $this->fail($e);
             }
         }
     }
 
-    /**
-     * Send SMS via Twilio
-     */
     protected function sendViaTwilio(): void
     {
         $twilio = new \Twilio\Rest\Client(
@@ -95,57 +76,65 @@ class SendSMSNotificationJob implements ShouldQueue
             config('services.twilio.auth_token')
         );
 
-        $twilio->messages->create(
-            $this->user->phone,
-            [
-                'from' => config('services.twilio.from'),
-                'body' => $this->message,
-            ]
-        );
+        $twilio->messages->create($this->user->phone, [
+            'from' => config('services.twilio.from'),
+            'body' => $this->message,
+        ]);
     }
 
-    /**
-     * Send SMS via Africas Talking
-     */
     protected function sendViaAfricasTalking(): void
     {
-        // Implementation for Africas Talking API
-        $apiKey = config('services.africastalking.api_key');
+        $apiKey   = config('services.africastalking.api_key');
         $username = config('services.africastalking.username');
+        $senderId = config('services.africastalking.sender_id', '');
+
+        // Production URL by default; override via AFRICASTALKING_API_URL for sandbox testing
+        $apiUrl = config(
+            'services.africastalking.api_url',
+            'https://api.africastalking.com/version1/messaging'
+        );
+
+        $payload = [
+            'username' => $username,
+            'to'       => $this->user->phone,
+            'message'  => $this->message,
+        ];
+        if ($senderId) {
+            $payload['from'] = $senderId;
+        }
 
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, 'https://api.sandbox.africastalking.com/version1/messaging');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
-            'username' => $username,
-            'to' => $this->user->phone,
-            'message' => $this->message,
-        ]));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Accept: application/json',
-            'Content-Type: application/x-www-form-urlencoded',
-            'apiKey: ' . $apiKey,
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $apiUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => http_build_query($payload),
+            CURLOPT_HTTPHEADER     => [
+                'Accept: application/json',
+                'Content-Type: application/x-www-form-urlencoded',
+                'apiKey: ' . $apiKey,
+            ],
+            CURLOPT_TIMEOUT => 15,
         ]);
 
         $response = curl_exec($ch);
+        $curlError = curl_error($ch);
         curl_close($ch);
 
-        if (!$response) {
-            throw new \Exception('Failed to send SMS via Africas Talking');
+        if (!$response || $curlError) {
+            throw new \Exception("Africa's Talking API error: {$curlError}");
+        }
+
+        $decoded = json_decode($response, true);
+        $status  = $decoded['SMSMessageData']['Recipients'][0]['status'] ?? null;
+        if ($status && $status !== 'Success') {
+            $code = $decoded['SMSMessageData']['Recipients'][0]['statusCode'] ?? 'unknown';
+            throw new \Exception("Africa's Talking delivery failed (statusCode={$code})");
         }
     }
 
-    /**
-     * Get the tags that should be assigned to the job.
-     */
     public function tags(): array
     {
-        return [
-            'notification',
-            'sms',
-            'user:' . $this->user->id,
-            'type:' . $this->type,
-        ];
+        return ['notification', 'sms', 'user:' . $this->user->id, 'type:' . $this->type];
     }
 }

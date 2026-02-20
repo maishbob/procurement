@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php artisan serve)",
+      "Bash(ls:*)",
+      "Bash(./vendor/bin/phpunit:*)",
+      "Bash(dir:*)",
+      "Bash(cmd.exe /c:*)",
+      "Bash(php -r:*)",
+      "Bash(php artisan test:*)",
+      "Bash(php artisan tinker:*)",
+      "Bash(php artisan db:show:*)",
+      "Bash(php artisan db:table:*)",
+      "Bash(php:*)",
+      "Bash(php -l:*)"
+    ]
+  }
+}

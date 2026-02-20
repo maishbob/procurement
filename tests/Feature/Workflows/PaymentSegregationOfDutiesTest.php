@@ -5,11 +5,12 @@ namespace Tests\Feature\Workflows;
 use Tests\TestCase;
 use App\Models\User;
 use App\Models\Payment;
-use App\Models\Supplier;
-use App\Models\SupplierInvoice;
+use App\Modules\Suppliers\Models\Supplier;
+use App\Modules\Finance\Models\SupplierInvoice;
 
 class PaymentSegregationOfDutiesTest extends TestCase
 {
+    use \Illuminate\Foundation\Testing\RefreshDatabase;
     protected User $creator;
     protected User $approver;
     protected User $processor;

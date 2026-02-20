@@ -40,13 +40,14 @@ class ProcessPaymentJob implements ShouldQueue
             );
 
             // Log successful processing
-            \App\Core\Audit\AuditService::log(
-                action: 'PAYMENT_PROCESSED',
-                status: 'success',
-                model_type: 'Payment',
-                model_id: $this->payment->id,
-                description: "Payment {$this->payment->id} processed with reference {$this->referenceNumber}",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'PAYMENT_PROCESSED',
+                'Payment',
+                $this->payment->id,
+                null,
+                null,
+                "Payment {$this->payment->id} processed with reference {$this->referenceNumber}",
+                [
                     'payment_id' => $this->payment->id,
                     'amount' => $this->payment->amount,
                     'supplier_id' => $this->payment->supplier_id,
@@ -57,13 +58,14 @@ class ProcessPaymentJob implements ShouldQueue
             // Send notification to creator and approvers
             $this->notifyStakeholders();
         } catch (\Exception $e) {
-            \App\Core\Audit\AuditService::log(
-                action: 'PAYMENT_PROCESSING_FAILED',
-                status: 'failed',
-                model_type: 'Payment',
-                model_id: $this->payment->id,
-                description: "Failed to process payment {$this->payment->id}: {$e->getMessage()}",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'PAYMENT_PROCESSING_FAILED',
+                'Payment',
+                $this->payment->id,
+                null,
+                null,
+                "Failed to process payment {$this->payment->id}: {$e->getMessage()}",
+                [
                     'error' => $e->getMessage(),
                 ]
             );

@@ -3,7 +3,7 @@
 namespace App\Observers;
 
 use App\Core\Audit\AuditService;
-use App\Models\GoodsReceivedNote;
+use App\Modules\GRN\Models\GoodsReceivedNote;
 
 class GRNObserver
 {
@@ -15,17 +15,17 @@ class GRNObserver
     public function created(GoodsReceivedNote $grn): void
     {
         $this->auditService->log(
-            action: 'GRN_CREATED',
-            status: 'success',
-            model_type: 'GoodsReceivedNote',
-            model_id: $grn->id,
-            description: "GRN #{$grn->grn_number} created for Purchase Order #{$grn->purchaseOrder->po_number}",
-            changes: [
+            'GRN_CREATED',
+            'GoodsReceivedNote',
+            $grn->id,
+            null,
+            [
                 'status' => 'received',
                 'purchase_order_id' => $grn->purchase_order_id,
                 'received_date' => $grn->received_date,
                 'received_by' => auth()?->id(),
-            ]
+            ],
+            "GRN #{$grn->grn_number} created for Purchase Order #{$grn->purchaseOrder->po_number}"
         );
     }
 
@@ -35,13 +35,13 @@ class GRNObserver
     public function inspectionRecorded(GoodsReceivedNote $grn): void
     {
         $this->auditService->log(
-            action: 'GRN_INSPECTION_RECORDED',
-            status: 'success',
-            model_type: 'GoodsReceivedNote',
-            model_id: $grn->id,
-            description: "Quality inspection recorded for GRN #{$grn->grn_number}",
-            changes: ['status' => ['from' => 'pending_inspection', 'to' => 'inspected']],
-            metadata: [
+            'GRN_INSPECTION_RECORDED',
+            'GoodsReceivedNote',
+            $grn->id,
+            ['status' => ['from' => 'pending_inspection', 'to' => 'inspected']],
+            null,
+            "Quality inspection recorded for GRN #{$grn->grn_number}",
+            [
                 'inspected_by' => auth()?->id(),
                 'inspection_date' => now(),
                 'items_passed' => $grn->items()->where('inspection_status', 'pass')->count(),
@@ -56,13 +56,13 @@ class GRNObserver
     public function postedToInventory(GoodsReceivedNote $grn): void
     {
         $this->auditService->log(
-            action: 'GRN_POSTED_TO_INVENTORY',
-            status: 'success',
-            model_type: 'GoodsReceivedNote',
-            model_id: $grn->id,
-            description: "GRN #{$grn->grn_number} posted to inventory",
-            changes: ['status' => ['from' => 'inspected', 'to' => 'posted']],
-            metadata: [
+            'GRN_POSTED_TO_INVENTORY',
+            'GoodsReceivedNote',
+            $grn->id,
+            ['status' => ['from' => 'inspected', 'to' => 'posted']],
+            null,
+            "GRN #{$grn->grn_number} posted to inventory",
+            [
                 'posted_by' => auth()?->id(),
                 'posted_date' => now(),
                 'items_count' => $grn->items()->count(),
@@ -87,12 +87,12 @@ class GRNObserver
 
         if (!empty($changes)) {
             $this->auditService->log(
-                action: 'GRN_UPDATED',
-                status: 'success',
-                model_type: 'GoodsReceivedNote',
-                model_id: $grn->id,
-                description: "GRN #{$grn->grn_number} updated",
-                changes: $changes
+                'GRN_UPDATED',
+                'GoodsReceivedNote',
+                $grn->id,
+                $changes,
+                null,
+                "GRN #{$grn->grn_number} updated"
             );
         }
     }
@@ -103,12 +103,12 @@ class GRNObserver
     public function deleted(GoodsReceivedNote $grn): void
     {
         $this->auditService->log(
-            action: 'GRN_DELETED',
-            status: 'success',
-            model_type: 'GoodsReceivedNote',
-            model_id: $grn->id,
-            description: "GRN #{$grn->grn_number} permanently deleted",
-            changes: ['deleted_by' => auth()?->id()]
+            'GRN_DELETED',
+            'GoodsReceivedNote',
+            $grn->id,
+            ['deleted_by' => auth()?->id()],
+            null,
+            "GRN #{$grn->grn_number} permanently deleted"
         );
     }
 }

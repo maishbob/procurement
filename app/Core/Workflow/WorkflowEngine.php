@@ -122,7 +122,9 @@ class WorkflowEngine
                 'inspection_passed' => ['approved'],
                 'inspection_failed' => ['rejected'],
                 'partial_acceptance' => ['approved'],
-                'approved' => ['posted'],
+                'approved' => ['posted', 'accepted', 'acceptance_rejected'],
+                'accepted' => ['completed'],
+                'acceptance_rejected' => [], // Terminal state
                 'posted' => ['completed'],
                 'rejected' => [], // Terminal state
                 'cancelled' => [], // Terminal state
@@ -158,6 +160,18 @@ class WorkflowEngine
                 'completed' => [], // Terminal state
             ],
 
+            'capa' => [
+                'draft' => ['pending_approval', 'cancelled'],
+                'pending_approval' => ['approved', 'rejected'],
+                'approved' => ['in_progress', 'cancelled'],
+                'in_progress' => ['pending_verification', 'cancelled'],
+                'pending_verification' => ['verified', 'in_progress'], // Can send back if verification fails
+                'verified' => ['closed'],
+                'rejected' => ['draft'], // Can be revised
+                'cancelled' => [], // Terminal state
+                'closed' => [], // Terminal state
+            ],
+
             default => throw new Exception("Unknown workflow: {$workflow}"),
         };
     }
@@ -173,6 +187,7 @@ class WorkflowEngine
             'grn' => 'draft',
             'payment' => 'draft',
             'procurement_process' => 'rfq_preparation',
+            'capa' => 'draft',
             default => 'draft',
         };
     }

@@ -3,11 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Services\ReportService;
+use App\Modules\Reporting\Services\KpiDashboardService;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
 {
-    public function __construct(private ReportService $reportService) {}
+    public function __construct(
+        private ReportService $reportService,
+        private KpiDashboardService $kpiDashboardService
+    ) {}
 
     /**
      * Display reports dashboard
@@ -17,6 +21,36 @@ class ReportController extends Controller
         $this->authorize('viewAny', \App\Models\Requisition::class);
 
         return view('reports.index');
+    }
+
+    /**
+     * KPI Dashboard — T-4.5
+     */
+    public function dashboard(Request $request)
+    {
+        $this->authorize('viewAny', \App\Models\Requisition::class);
+
+        // Default to current Kenya fiscal year (July–June)
+        $now = now()->timezone(config('procurement.system.timezone', 'Africa/Nairobi'));
+        $defaultFiscalYear = $now->month >= 7
+            ? $now->year . '/' . ($now->year + 1)
+            : ($now->year - 1) . '/' . $now->year;
+
+        $fiscalYear = $request->get('fiscal_year', $defaultFiscalYear);
+
+        // Determine current quarter within fiscal year
+        $month = $now->month;
+        $quarter = match(true) {
+            $month >= 7 && $month <= 9  => 'Q1',
+            $month >= 10 && $month <= 12 => 'Q2',
+            $month >= 1 && $month <= 3   => 'Q3',
+            default                       => 'Q4',
+        };
+
+        $data        = $this->kpiDashboardService->getFiscalYearKpis($fiscalYear);
+        $quarterData = $this->kpiDashboardService->getQuarterlyKpis($fiscalYear, $quarter);
+
+        return view('reports.dashboard', compact('data', 'quarterData', 'fiscalYear', 'quarter'));
     }
 
     /**

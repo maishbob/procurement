@@ -23,13 +23,14 @@ class UpdateInventoryListener
                 // Check if stock is low after update
                 $this->checkLowStock($grnItem, $grn);
             } catch (\Exception $e) {
-                \App\Core\Audit\AuditService::log(
-                    action: 'INVENTORY_UPDATE_FAILED',
-                    status: 'failed',
-                    model_type: 'GRNItem',
-                    model_id: $grnItem->id,
-                    description: "Failed to update inventory: {$e->getMessage()}",
-                    metadata: [
+                app(\App\Core\Audit\AuditService::class)->log(
+                    'INVENTORY_UPDATE_FAILED',
+                    'GRNItem',
+                    $grnItem->id,
+                    null,
+                    null,
+                    "Failed to update inventory: {$e->getMessage()}",
+                    [
                         'error' => $e->getMessage(),
                         'grn_item_id' => $grnItem->id,
                     ]
@@ -95,13 +96,14 @@ class UpdateInventoryListener
         ]);
 
         // Audit log
-        \App\Core\Audit\AuditService::log(
-            action: 'INVENTORY_ITEM_UPDATED',
-            status: 'success',
-            model_type: 'InventoryItem',
-            model_id: $catalogItem->id,
-            description: "Inventory updated from GRN {$grn->grn_number}",
-            metadata: [
+        app(\App\Core\Audit\AuditService::class)->log(
+            'INVENTORY_ITEM_UPDATED',
+            'InventoryItem',
+            $catalogItem->id,
+            null,
+            null,
+            "Inventory updated from GRN {$grn->grn_number}",
+            [
                 'quantity_received' => $grnItem->quantity_received,
                 'old_quantity' => $oldQty,
                 'new_quantity' => $newQty,

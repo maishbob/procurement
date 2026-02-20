@@ -68,13 +68,14 @@ class GenerateReportJob implements ShouldQueue
             }
 
             // Audit log
-            \App\Core\Audit\AuditService::log(
-                action: 'REPORT_GENERATED',
-                status: 'success',
-                model_type: 'Report',
-                model_id: $this->user->id,
-                description: "Report '{$this->reportType}' generated in {$this->format} format",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'REPORT_GENERATED',
+                'Report',
+                $this->user->id,
+                null,
+                null,
+                "Report '{$this->reportType}' generated in {$this->format} format",
+                [
                     'report_type' => $this->reportType,
                     'format' => $this->format,
                     'filename' => $filename,
@@ -82,13 +83,14 @@ class GenerateReportJob implements ShouldQueue
                 ]
             );
         } catch (\Exception $e) {
-            \App\Core\Audit\AuditService::log(
-                action: 'REPORT_FAILED',
-                status: 'failed',
-                model_type: 'Report',
-                model_id: $this->user->id,
-                description: "Failed to generate report '{$this->reportType}': {$e->getMessage()}",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'REPORT_FAILED',
+                'Report',
+                $this->user->id,
+                null,
+                null,
+                "Failed to generate report '{$this->reportType}': {$e->getMessage()}",
+                [
                     'error' => $e->getMessage(),
                     'report_type' => $this->reportType,
                 ]

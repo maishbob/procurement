@@ -15,18 +15,15 @@ class Department extends Model
     protected $fillable = [
         'code',
         'name',
+        'category',
         'description',
         'head_of_department_id',
         'parent_department_id',
         'is_active',
-        'budget_allocated',
-        'budget_spent',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
-        'budget_allocated' => 'decimal:2',
-        'budget_spent' => 'decimal:2',
         'deleted_at' => 'datetime',
     ];
 
@@ -85,24 +82,6 @@ class Department extends Model
     /**
      * Helper Methods
      */
-    public function getBudgetAvailableAttribute(): float
-    {
-        return $this->budget_allocated - $this->budget_spent;
-    }
-
-    public function getBudgetUtilizationPercentageAttribute(): float
-    {
-        if ($this->budget_allocated == 0) {
-            return 0;
-        }
-        return ($this->budget_spent / $this->budget_allocated) * 100;
-    }
-
-    public function hasBudgetAvailable(float $amount): bool
-    {
-        return $this->getBudgetAvailableAttribute() >= $amount;
-    }
-
     public function isSubDepartmentOf(int $departmentId): bool
     {
         if ($this->parent_department_id === $departmentId) {

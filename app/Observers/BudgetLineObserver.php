@@ -16,15 +16,13 @@ class BudgetLineObserver
     {
         $this->auditService->log(
             action: 'BUDGET_LINE_CREATED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $budgetLine->id,
-            description: "Budget line created for {$budgetLine->costCenter->name} in fiscal year {$budgetLine->fiscal_year}",
-            changes: [
-                'cost_center_id' => $budgetLine->cost_center_id,
+            model: 'BudgetLine',
+            modelId: $budgetLine->id,
+            newValues: [
+                'budget_code' => $budgetLine->budget_code,
                 'fiscal_year' => $budgetLine->fiscal_year,
                 'allocated_amount' => $budgetLine->allocated_amount,
-                'is_operational' => $budgetLine->is_operational,
+                'status' => $budgetLine->status,
             ],
             metadata: [
                 'created_by' => auth()?->id(),
@@ -39,19 +37,16 @@ class BudgetLineObserver
     {
         $oldAmount = $budgetLine->getOriginal('allocated_amount');
         $newAmount = $budgetLine->allocated_amount;
-        $difference = $newAmount - $oldAmount;
 
         $this->auditService->log(
             action: 'BUDGET_ALLOCATED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $budgetLine->id,
-            description: "Budget reallocated for {$budgetLine->costCenter->name}. Change: KES " . number_format($difference, 2),
-            changes: ['allocated_amount' => ['from' => $oldAmount, 'to' => $newAmount]],
+            model: 'BudgetLine',
+            modelId: $budgetLine->id,
+            oldValues: ['allocated_amount' => $oldAmount],
+            newValues: ['allocated_amount' => $newAmount],
             metadata: [
                 'reallocated_by' => auth()?->id(),
-                'previous_amount' => $oldAmount,
-                'new_amount' => $newAmount,
+                'difference' => $newAmount - $oldAmount,
             ]
         );
     }
@@ -63,10 +58,9 @@ class BudgetLineObserver
     {
         $this->auditService->log(
             action: 'BUDGET_COMMITTED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $budgetLine->id,
-            description: "Budget commitment recorded. Amount: KES " . number_format($budgetLine->committed_amount, 2),
+            model: 'BudgetLine',
+            modelId: $budgetLine->id,
+            newValues: ['committed_amount' => $budgetLine->committed_amount],
             metadata: [
                 'available_amount' => $budgetLine->available_amount,
             ]
@@ -80,13 +74,12 @@ class BudgetLineObserver
     {
         $this->auditService->log(
             action: 'BUDGET_EXECUTED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $budgetLine->id,
-            description: "Budget executed. Spent: KES " . number_format($budgetLine->spent_amount, 2),
+            model: 'BudgetLine',
+            modelId: $budgetLine->id,
+            newValues: ['spent_amount' => $budgetLine->spent_amount],
             metadata: [
                 'utilization_percent' => ($budgetLine->spent_amount / $budgetLine->allocated_amount * 100),
-                'remaining_amount' => $budgetLine->available_amount,
+                'available_amount' => $budgetLine->available_amount,
             ]
         );
     }
@@ -98,14 +91,12 @@ class BudgetLineObserver
     {
         $this->auditService->log(
             action: 'BUDGET_FINALIZED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $budgetLine->id,
-            description: "Budget line finalized for fiscal year {$budgetLine->fiscal_year}",
-            changes: ['is_final' => ['from' => false, 'to' => true]],
+            model: 'BudgetLine',
+            modelId: $budgetLine->id,
+            newValues: ['fiscal_year' => $budgetLine->fiscal_year],
             metadata: [
                 'finalized_by' => auth()?->id(),
-                'finalization_date' => now(),
+                'finalization_date' => now()->toDateString(),
                 'final_spent_amount' => $budgetLine->spent_amount,
             ]
         );
@@ -116,21 +107,23 @@ class BudgetLineObserver
      */
     public function updated(BudgetLine $budgetLine): void
     {
-        $changes = [];
+        $oldValues = [];
+        $newValues = [];
+
         foreach ($budgetLine->getChanges() as $key => $value) {
             if (!in_array($key, ['updated_at'])) {
-                $changes[$key] = ['from' => $budgetLine->getOriginal($key), 'to' => $value];
+                $oldValues[$key] = $budgetLine->getOriginal($key);
+                $newValues[$key] = $value;
             }
         }
 
-        if (!empty($changes)) {
+        if (!empty($newValues)) {
             $this->auditService->log(
                 action: 'BUDGET_LINE_UPDATED',
-                status: 'success',
-                model_type: 'BudgetLine',
-                model_id: $budgetLine->id,
-                description: "Budget line updated for {$budgetLine->costCenter->name}",
-                changes: $changes
+                model: 'BudgetLine',
+                modelId: $budgetLine->id,
+                oldValues: $oldValues,
+                newValues: $newValues
             );
         }
     }
@@ -142,11 +135,13 @@ class BudgetLineObserver
     {
         $this->auditService->log(
             action: 'BUDGET_LINE_DELETED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $budgetLine->id,
-            description: "Budget line for {$budgetLine->costCenter->name} permanently deleted",
-            changes: ['deleted_by' => auth()?->id()]
+            model: 'BudgetLine',
+            modelId: $budgetLine->id,
+            oldValues: $budgetLine->getAttributes(),
+            metadata: [
+                'deleted_by' => auth()?->id(),
+                'deletion_date' => now()->toDateString(),
+            ]
         );
     }
 }

@@ -71,9 +71,11 @@ return new class extends Migration
 
     public function down(): void
     {
+        \DB::statement('SET FOREIGN_KEY_CHECKS=0');
         Schema::dropIfExists('budget_transactions');
         Schema::dropIfExists('budget_lines');
         Schema::dropIfExists('cost_centers');
         Schema::dropIfExists('departments');
+        \DB::statement('SET FOREIGN_KEY_CHECKS=1');
     }
 };

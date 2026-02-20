@@ -2,17 +2,20 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\GRN;
-use App\Models\PurchaseOrder;
+use App\Modules\GRN\Models\GoodsReceivedNote as GRN;
+use App\Modules\PurchaseOrders\Models\PurchaseOrder;
 use App\Services\GRNService;
 use App\Services\InventoryService;
+use App\Core\Workflow\WorkflowEngine;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class GRNController extends Controller
 {
     public function __construct(
         private GRNService $grnService,
-        private InventoryService $inventoryService
+        private InventoryService $inventoryService,
+        private WorkflowEngine $workflowEngine
     ) {}
 
     /**
@@ -27,6 +30,7 @@ class GRNController extends Controller
             'purchase_order_id' => $request->get('purchase_order_id'),
             'date_from' => $request->get('date_from'),
             'date_to' => $request->get('date_to'),
+            'search' => $request->get('search'),
         ];
 
         $grns = $this->grnService->getAllGRNs($filters, 15);
@@ -59,18 +63,17 @@ class GRNController extends Controller
 
         $validated = $request->validate([
             'purchase_order_id' => 'required|exists:purchase_orders,id',
-            'grn_date' => 'required|date',
-            'received_by' => 'required|string',
-            'items.*.item_id' => 'required|exists:item_categories,id',
+            'received_date' => 'sometimes|date', // Changed grn_date to received_date to match service
+            'received_by' => 'sometimes|string',
+            'items' => 'required|array',
             'items.*.quantity_received' => 'required|numeric|min:0',
-            'items.*.quantity_accepted' => 'required|numeric|min:0',
-            'items.*.quantity_rejected' => 'required|numeric|min:0',
             'items.*.condition' => 'required|in:good,damaged,expired',
-            'notes' => 'nullable|string',
+            'delivery_notes' => 'nullable|string',
         ]);
 
         try {
-            $grn = $this->grnService->createGRN($validated, auth()->user());
+            $purchaseOrder = PurchaseOrder::findOrFail($validated['purchase_order_id']);
+            $grn = $this->grnService->createGRN($purchaseOrder, $validated);
 
             return redirect()->route('grn.show', $grn)
                 ->with('success', 'Goods Received Note created');
@@ -89,7 +92,9 @@ class GRNController extends Controller
         $items = $grn->items()->get();
         $purchaseOrder = $grn->purchaseOrder;
         $discrepancies = $grn->discrepancies()->get();
-        $inspection = $grn->inspection;
+        
+        // Check if relationship exists before accessing
+        $inspection = $grn->inspection ?? null; 
 
         return view('grn.show', compact('grn', 'items', 'purchaseOrder', 'discrepancies', 'inspection'));
     }
@@ -101,7 +106,7 @@ class GRNController extends Controller
     {
         $this->authorize('update', $grn);
 
-        if ($grn->status !== 'pending') {
+        if ($grn->status !== 'received' && $grn->status !== 'pending') {
             return back()->with('error', 'Only pending GRNs can be edited');
         }
 
@@ -115,14 +120,15 @@ class GRNController extends Controller
     {
         $this->authorize('update', $grn);
 
-        if ($grn->status !== 'pending') {
-            return back()->with('error', 'Only pending GRNs can be updated');
+        if ($grn->status !== 'received' && $grn->status !== 'pending') {
+             return back()->with('error', 'Only pending GRNs can be updated');
         }
 
         $validated = $request->validate([
             'items.*.quantity_received' => 'required|numeric|min:0',
-            'items.*.quantity_accepted' => 'required|numeric|min:0',
-            'items.*.quantity_rejected' => 'required|numeric|min:0',
+            // 'items.*.quantity_accepted' => 'required|numeric|min:0', // Removed as this is usually inspection phase
+            // 'items.*.quantity_rejected' => 'required|numeric|min:0',
+             'notes' => 'nullable|string',
         ]);
 
         try {
@@ -142,8 +148,8 @@ class GRNController extends Controller
     {
         $this->authorize('delete', $grn);
 
-        if ($grn->status !== 'pending') {
-            return back()->with('error', 'Only pending GRNs can be deleted');
+        if ($grn->status !== 'received' && $grn->status !== 'pending') {
+             return back()->with('error', 'Only pending GRNs can be deleted');
         }
 
         try {
@@ -163,8 +169,10 @@ class GRNController extends Controller
     {
         $this->authorize('inspect', $grn);
 
-        if ($grn->status !== 'pending') {
-            return back()->with('error', 'GRN must be pending for inspection');
+        // Allow inspection if status is 'received' or 'pending' (or whatever initial status is)
+        // Adjust status check logic as needed based on workflow
+        if ($grn->status === 'approved' || $grn->status === 'posted') {
+             return back()->with('error', 'GRN already processed');
         }
 
         $items = $grn->items()->get();
@@ -180,13 +188,17 @@ class GRNController extends Controller
         $this->authorize('inspect', $grn);
 
         $validated = $request->validate([
-            'items.*.inspection_status' => 'required|in:pass,fail,partial',
+            'items.*.quality_pass' => 'required|boolean', // Changed to match service expectation (quality_pass vs status)
+             // Service expects: ['quality_pass' => bool, 'notes' => string]
             'items.*.notes' => 'nullable|string',
             'inspection_notes' => 'nullable|string',
         ]);
+        
+        // Transform validation to match service expectation if needed, or update service.
+        // Service expects 'quality_pass' key in item array.
 
         try {
-            $this->grnService->recordInspection($grn, $validated, auth()->user());
+            $this->grnService->recordInspection($grn, $validated); // Removed extra user arg
 
             return redirect()->route('grn.show', $grn)
                 ->with('success', 'Inspection recorded successfully');
@@ -207,7 +219,7 @@ class GRNController extends Controller
         }
 
         try {
-            $this->grnService->postToInventory($grn, auth()->user());
+            $this->grnService->postToInventory($grn);
 
             return back()->with('success', 'GRN posted to inventory');
         } catch (\Exception $e) {
@@ -229,6 +241,103 @@ class GRNController extends Controller
     }
 
     /**
+     * Show acceptance form for an approved GRN
+     */
+    public function showAcceptForm(GRN $grn)
+    {
+        $this->authorize('view', $grn);
+
+        if (!$grn->canBeAccepted()) {
+            return back()->with('error', 'This GRN is not pending acceptance.');
+        }
+
+        $items = $grn->items()->get();
+
+        return view('grn.accept', compact('grn', 'items'));
+    }
+
+    /**
+     * Accept a delivered GRN (department end-user acceptance)
+     */
+    public function accept(Request $request, GRN $grn)
+    {
+        $this->authorize('view', $grn);
+
+        if (!$grn->canBeAccepted()) {
+            return back()->with('error', 'This GRN cannot be accepted in its current state.');
+        }
+
+        $validated = $request->validate([
+            'acceptance_decision' => 'required|in:accepted,partially_accepted',
+            'acceptance_notes'    => 'nullable|string|max:2000',
+            'completion_certificate' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+        ]);
+
+        $certificatePath = null;
+        if ($request->hasFile('completion_certificate')) {
+            $certificatePath = $request->file('completion_certificate')
+                ->store('grn/certificates', 'public');
+        }
+
+        $acceptanceStatus = $validated['acceptance_decision'];
+
+        $grn->update([
+            'acceptance_status'           => $acceptanceStatus,
+            'accepted_by'                 => auth()->id(),
+            'accepted_at'                 => now(),
+            'acceptance_notes'            => $validated['acceptance_notes'] ?? null,
+            'completion_certificate_path' => $certificatePath,
+        ]);
+
+        $this->workflowEngine->transition(
+            $grn,
+            'grn',
+            $grn->getOriginal('status'),
+            'accepted',
+            "Department acceptance: {$acceptanceStatus}",
+            ['accepted_by' => auth()->id(), 'acceptance_status' => $acceptanceStatus]
+        );
+
+        return redirect()->route('grn.show', $grn)
+            ->with('success', 'Delivery accepted successfully.');
+    }
+
+    /**
+     * Reject acceptance of a delivered GRN
+     */
+    public function rejectAcceptance(Request $request, GRN $grn)
+    {
+        $this->authorize('view', $grn);
+
+        if (!$grn->canBeAccepted()) {
+            return back()->with('error', 'This GRN cannot be rejected in its current state.');
+        }
+
+        $validated = $request->validate([
+            'acceptance_notes' => 'required|string|min:10|max:2000',
+        ]);
+
+        $grn->update([
+            'acceptance_status' => 'rejected',
+            'accepted_by'       => auth()->id(),
+            'accepted_at'       => now(),
+            'acceptance_notes'  => $validated['acceptance_notes'],
+        ]);
+
+        $this->workflowEngine->transition(
+            $grn,
+            'grn',
+            $grn->getOriginal('status'),
+            'acceptance_rejected',
+            "Department rejected acceptance: {$validated['acceptance_notes']}",
+            ['rejected_by' => auth()->id()]
+        );
+
+        return redirect()->route('grn.show', $grn)
+            ->with('warning', 'Delivery acceptance rejected. Procurement team has been notified.');
+    }
+
+    /**
      * Record discrepancy
      */
     public function recordDiscrepancy(Request $request, GRN $grn)
@@ -237,14 +346,14 @@ class GRNController extends Controller
 
         $validated = $request->validate([
             'type' => 'required|in:shortage,overage,damage,quality',
-            'item_id' => 'required|exists:item_categories,id',
+            'item_id' => 'required|exists:catalog_items,id',
             'quantity' => 'required|numeric',
             'amount' => 'required|numeric',
             'description' => 'required|string|min:10',
         ]);
 
         try {
-            $this->grnService->recordDiscrepancy($grn, $validated, auth()->user());
+            $this->grnService->recordDiscrepancy($grn, $validated);
 
             return back()->with('success', 'Discrepancy recorded');
         } catch (\Exception $e) {

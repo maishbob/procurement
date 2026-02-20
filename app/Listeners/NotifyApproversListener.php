@@ -4,26 +4,36 @@ namespace App\Listeners;
 
 use App\Events\RequisitionSubmittedEvent;
 use App\Jobs\SendEmailNotificationJob;
+use App\Models\User;
 use App\Notifications\RequisitionSubmittedNotification;
 
 class NotifyApproversListener
 {
-    /**
-     * Handle the event.
-     */
     public function handle(RequisitionSubmittedEvent $event): void
     {
-        $requisition = $event->requisition;
+        $requisition  = $event->requisition;
+        $amount       = (float) ($requisition->total_amount ?? 0);
+        $hodThreshold = (float) config('procurement.approval_thresholds.hod', env('THRESHOLD_HOD_APPROVAL', 50000));
 
-        // Find approvers based on requisition amount and their approval limits
-        $approvers = \App\Models\User::where('approval_limit', '>=', $requisition->total_amount)
-            ->whereHas('roles', function ($query) {
-                $query->whereIn('name', ['approver', 'manager', 'director', 'admin']);
-            })
-            ->where('id', '!=', $requisition->created_by)
+        // Route to HOD for smaller amounts, Principal/Deputy for larger amounts
+        $rolesToNotify = $amount <= $hodThreshold
+            ? ['Head of Department']
+            : ['Principal', 'Deputy Principal'];
+
+        $approvers = User::active()
+            ->whereHas('roles', fn ($q) => $q->whereIn('name', $rolesToNotify))
+            ->where('department_id', $requisition->department_id)
+            ->where('id', '!=', $requisition->created_by ?? $requisition->requested_by)
             ->get();
 
-        // Send notifications to all eligible approvers
+        // Fall back to any matching approver organisation-wide if none found in department
+        if ($approvers->isEmpty()) {
+            $approvers = User::active()
+                ->whereHas('roles', fn ($q) => $q->whereIn('name', $rolesToNotify))
+                ->where('id', '!=', $requisition->created_by ?? $requisition->requested_by)
+                ->get();
+        }
+
         foreach ($approvers as $approver) {
             dispatch(new SendEmailNotificationJob(
                 $approver,
@@ -31,17 +41,15 @@ class NotifyApproversListener
             ));
         }
 
-        // Audit log
-        \App\Core\Audit\AuditService::log(
+        app(\App\Core\Audit\AuditService::class)->log(
             action: 'APPROVERS_NOTIFIED',
-            status: 'success',
-            model_type: 'Requisition',
-            model_id: $requisition->id,
-            description: "Notified {$approvers->count()} approvers for requisition {$requisition->requisition_number}",
+            model: 'Requisition',
+            modelId: $requisition->id,
             metadata: [
                 'approver_count' => $approvers->count(),
-                'total_amount' => $requisition->total_amount,
-            ]
+                'roles_notified' => $rolesToNotify,
+                'total_amount'   => $amount,
+            ],
         );
     }
 }

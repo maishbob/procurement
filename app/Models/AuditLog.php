@@ -31,6 +31,20 @@ class AuditLog extends Model
 {
     public $timestamps = false;
 
+    /**
+     * Enforce immutability: audit records must never be modified or deleted.
+     */
+    protected static function booted(): void
+    {
+        static::updating(function () {
+            throw new \RuntimeException('Audit log records are immutable and cannot be modified.');
+        });
+
+        static::deleting(function () {
+            throw new \RuntimeException('Audit log records are immutable and cannot be deleted.');
+        });
+    }
+
     protected $fillable = [
         'user_id',
         'user_name',

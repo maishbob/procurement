@@ -21,6 +21,11 @@ class GoodsReceivedNote extends Model
         'inspected_by',
         'approved_by',
         'status',
+        'acceptance_status',
+        'accepted_by',
+        'accepted_at',
+        'acceptance_notes',
+        'completion_certificate_path',
         'received_date',
         'inspection_date',
         'delivery_note_number',
@@ -45,6 +50,7 @@ class GoodsReceivedNote extends Model
     protected $casts = [
         'received_date' => 'datetime',
         'inspection_date' => 'datetime',
+        'accepted_at' => 'datetime',
         'has_discrepancies' => 'boolean',
         'quality_check_passed' => 'boolean',
         'posted_to_inventory' => 'boolean',
@@ -79,6 +85,11 @@ class GoodsReceivedNote extends Model
     public function approvedBy(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'approved_by');
+    }
+
+    public function acceptedBy(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'accepted_by');
     }
 
     public function items(): HasMany
@@ -168,6 +179,21 @@ class GoodsReceivedNote extends Model
         return $this->status === 'approved' && !$this->posted_to_inventory;
     }
 
+    public function isAccepted(): bool
+    {
+        return in_array($this->acceptance_status, ['accepted', 'partially_accepted']);
+    }
+
+    public function isPendingAcceptance(): bool
+    {
+        return $this->status === 'approved' && $this->acceptance_status === 'pending';
+    }
+
+    public function canBeAccepted(): bool
+    {
+        return $this->status === 'approved' && $this->acceptance_status === 'pending';
+    }
+
     /**
      * Business Logic
      */
@@ -207,17 +233,19 @@ class GoodsReceivedNote extends Model
     {
         return match ($this->status) {
             'draft' => 'Draft',
-            'pending_inspection' => 'Pending Inspection',
-            'under_inspection' => 'Under Inspection',
-            'pending_approval' => 'Pending Approval',
+            'submitted' => 'Submitted',
+            'inspection_pending' => 'Pending Inspection',
+            'inspection_passed' => 'Inspection Passed',
+            'inspection_failed' => 'Inspection Failed',
+            'partial_acceptance' => 'Partially Accepted',
             'approved' => 'Approved',
-            'posted_to_inventory' => 'Posted to Inventory',
+            'accepted' => 'Accepted by Department',
+            'acceptance_rejected' => 'Acceptance Rejected',
+            'posted' => 'Posted to Inventory',
             'rejected' => 'Rejected',
-            'on_hold' => 'On Hold',
-            'returned_to_supplier' => 'Returned to Supplier',
-            'partially_accepted' => 'Partially Accepted',
             'cancelled' => 'Cancelled',
-            default => ucfirst($this->status),
+            'completed' => 'Completed',
+            default => ucfirst(str_replace('_', ' ', $this->status)),
         };
     }
 
@@ -225,16 +253,40 @@ class GoodsReceivedNote extends Model
     {
         return match ($this->status) {
             'draft' => 'gray',
-            'pending_inspection' => 'yellow',
-            'under_inspection' => 'blue',
-            'pending_approval' => 'orange',
+            'submitted' => 'blue',
+            'inspection_pending' => 'yellow',
+            'inspection_passed' => 'green',
+            'inspection_failed' => 'red',
+            'partial_acceptance' => 'yellow',
             'approved' => 'green',
-            'posted_to_inventory' => 'green',
+            'accepted' => 'green',
+            'acceptance_rejected' => 'red',
+            'posted' => 'green',
             'rejected' => 'red',
-            'on_hold' => 'orange',
-            'returned_to_supplier' => 'red',
-            'partially_accepted' => 'yellow',
             'cancelled' => 'red',
+            'completed' => 'green',
+            default => 'gray',
+        };
+    }
+
+    public function getAcceptanceStatusLabelAttribute(): string
+    {
+        return match ($this->acceptance_status) {
+            'pending' => 'Pending Acceptance',
+            'accepted' => 'Accepted',
+            'partially_accepted' => 'Partially Accepted',
+            'rejected' => 'Rejected',
+            default => 'Unknown',
+        };
+    }
+
+    public function getAcceptanceStatusColorAttribute(): string
+    {
+        return match ($this->acceptance_status) {
+            'pending' => 'yellow',
+            'accepted' => 'green',
+            'partially_accepted' => 'blue',
+            'rejected' => 'red',
             default => 'gray',
         };
     }

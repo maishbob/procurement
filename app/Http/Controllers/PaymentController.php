@@ -7,6 +7,8 @@ use App\Models\SupplierInvoice;
 use App\Services\PaymentService;
 use App\Services\ApprovalService;
 use App\Core\TaxEngine\TaxEngine;
+use App\Modules\Finance\Services\PesapalGatewayService;
+use App\Modules\Finance\Models\PaymentGatewayRole;
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
 
@@ -189,7 +191,7 @@ class PaymentController extends Controller
      */
     public function submit(Payment $payment)
     {
-        $this->authorize('create', Payment::class);
+        $this->authorize('submit', $payment);
 
         if ($payment->status !== 'draft') {
             return back()->with('error', 'Only draft payments can be submitted');
@@ -384,11 +386,12 @@ class PaymentController extends Controller
         }
 
         try {
-            $payment->update([
-                'status' => 'paid',
-                'paid_at' => now(),
-                'confirmed_by' => auth()->id(),
-            ]);
+            $this->paymentService->processPayment(
+                $payment,
+                auth()->user(),
+                $payment->reference_number ?? '',
+                'Payment confirmed'
+            );
 
             return back()->with('success', 'Payment confirmed');
         } catch (\Exception $e) {
@@ -443,6 +446,28 @@ class PaymentController extends Controller
                 ->with('success', 'Payments reconciled successfully');
         } catch (\Exception $e) {
             return back()->with('error', 'Failed to reconcile: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Initiate a PesaPal payment for the given Payment record (T-5.4).
+     * Only users with the 'initiator' gateway role may call this.
+     */
+    public function initiatePesapal(Request $request, Payment $payment)
+    {
+        $userId = auth()->id();
+
+        if (!PaymentGatewayRole::userHasRole($userId, 'pesapal', 'initiator')) {
+            return back()->with('error', 'You do not have permission to initiate PesaPal payments.');
+        }
+
+        try {
+            $pesapalService = app(PesapalGatewayService::class);
+            $transaction    = $pesapalService->initiatePayment($payment);
+
+            return back()->with('success', "PesaPal payment initiated. Reference: {$transaction->merchant_reference}");
+        } catch (\Exception $e) {
+            return back()->with('error', 'PesaPal initiation failed: ' . $e->getMessage());
         }
     }
 }

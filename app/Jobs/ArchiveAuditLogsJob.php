@@ -50,24 +50,28 @@ class ArchiveAuditLogsJob implements ShouldQueue
             }
 
             // Audit log
-            \App\Core\Audit\AuditService::log(
-                action: 'AUDIT_LOGS_ARCHIVED',
-                status: 'success',
-                model_type: 'AuditLog',
-                description: "Archived {$archivedCount} audit logs older than {$this->daysOld} days",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'AUDIT_LOGS_ARCHIVED',
+                'AuditLog',
+                null,
+                null,
+                null,
+                "Archived {$archivedCount} audit logs older than {$this->daysOld} days",
+                [
                     'cutoff_date' => $cutoffDate->toDateString(),
                     'archived_count' => $archivedCount,
                     'deleted' => $this->deleteAfterArchive,
                 ]
             );
         } catch (\Exception $e) {
-            \App\Core\Audit\AuditService::log(
-                action: 'AUDIT_LOGS_ARCHIVE_FAILED',
-                status: 'failed',
-                model_type: 'AuditLog',
-                description: 'Failed to archive audit logs: ' . $e->getMessage(),
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'AUDIT_LOGS_ARCHIVE_FAILED',
+                'AuditLog',
+                null,
+                null,
+                null,
+                'Failed to archive audit logs: ' . $e->getMessage(),
+                [
                     'days_old' => $this->daysOld,
                     'error' => $e->getMessage(),
                 ]

@@ -12,18 +12,24 @@ class BudgetLine extends Model
     use HasFactory;
 
     protected $fillable = [
-        'code',
-        'name',
+        'budget_code',
         'description',
         'fiscal_year',
         'department_id',
         'cost_center_id',
-        'budget_category',
+        'category',
         'allocated_amount',
         'committed_amount',
         'spent_amount',
         'is_active',
         'notes',
+        'status',
+        'rejection_reason',
+        'submitted_by',
+        'approved_by',
+        'submitted_at',
+        'approved_at',
+        'rejected_at',
     ];
 
     protected $casts = [
@@ -31,6 +37,10 @@ class BudgetLine extends Model
         'committed_amount' => 'decimal:2',
         'spent_amount' => 'decimal:2',
         'is_active' => 'boolean',
+        'status' => 'string',
+        'submitted_at' => 'datetime',
+        'approved_at' => 'datetime',
+        'rejected_at' => 'datetime',
     ];
 
     /**
@@ -56,6 +66,21 @@ class BudgetLine extends Model
         return $this->hasMany(BudgetTransaction::class);
     }
 
+    public function approvals(): HasMany
+    {
+        return $this->hasMany(BudgetApproval::class);
+    }
+
+    public function submitter(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'submitted_by');
+    }
+
+    public function approver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
     /**
      * Query Scopes
      */
@@ -76,7 +101,7 @@ class BudgetLine extends Model
 
     public function scopeByCategory($query, string $category)
     {
-        return $query->where('budget_category', $category);
+        return $query->where('category', $category);
     }
 
     public function scopeWithUtilization($query)
@@ -94,6 +119,16 @@ class BudgetLine extends Model
     public function getAvailableAmountAttribute(): float
     {
         return $this->allocated_amount - $this->committed_amount - $this->spent_amount;
+    }
+
+    public function getCodeAttribute(): ?string
+    {
+        return $this->budget_code;
+    }
+
+    public function getBudgetCategoryAttribute(): ?string
+    {
+        return $this->category;
     }
 
     public function getUtilizationPercentageAttribute(): float

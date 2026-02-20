@@ -93,37 +93,64 @@ class PaymentService
     }
 
     /**
-     * Approve a payment
+     * Approve a payment (approver must differ from submitter — enforced by PaymentPolicy)
      */
-    public function approvePayment(Payment $payment, $user): Payment
+    public function approvePayment(Payment $payment, $user, string $notes = ''): Payment
     {
-        $payment->update(['status' => 'approved', 'approved_by' => $user->id]);
+        $payment->update([
+            'status'         => 'approved',
+            'approved_by'    => $user->id,
+            'approved_at'    => now(),
+            'approval_notes' => $notes,
+        ]);
         return $payment;
     }
 
     /**
-     * Reject a payment
+     * Reject a payment (rejector must differ from submitter — enforced by PaymentPolicy)
      */
-    public function rejectPayment(Payment $payment, string $reason, $user): Payment
+    public function rejectPayment(Payment $payment, $user, string $reason): Payment
     {
-        $payment->update(['status' => 'rejected', 'rejection_reason' => $reason, 'rejected_by' => $user->id]);
+        $payment->update([
+            'status'           => 'rejected',
+            'rejection_reason' => $reason,
+            'rejected_by'      => $user->id,
+            'rejected_at'      => now(),
+        ]);
         return $payment;
     }
 
     /**
-     * Process a payment
+     * Process a payment (processor must differ from submitter & approver — enforced by PaymentPolicy)
      */
-    public function processPayment(Payment $payment, $user): Payment
+    public function processPayment(Payment $payment, $user, string $referenceNumber = '', string $notes = ''): Payment
     {
-        $payment->update(['status' => 'processed', 'processed_by' => $user->id, 'processed_date' => now()]);
+        $payment->update([
+            'status'           => 'processed',
+            'processed_by'     => $user->id,
+            'processed_date'   => now(),
+            'reference_number' => $referenceNumber ?: $payment->reference_number,
+            'processing_notes' => $notes,
+        ]);
         return $payment;
     }
 
     /**
-     * Get WHT payments
+     * Get WHT payments for a period
      */
-    public function getWHTPayments(array $filters = []): array
+    public function getWHTPayments(array $filters = []): \Illuminate\Database\Eloquent\Collection
     {
-        return [];
+        $query = Payment::where('withholding_tax_amount', '>', 0)
+            ->with(['invoices.supplier']);
+
+        if (!empty($filters['date_from'])) {
+            $query->whereDate('paid_at', '>=', $filters['date_from']);
+        }
+
+        if (!empty($filters['date_to'])) {
+            $query->whereDate('paid_at', '<=', $filters['date_to']);
+        }
+
+        return $query->orderBy('paid_at', 'desc')->get();
     }
 }

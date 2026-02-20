@@ -37,23 +37,27 @@ class SendScheduledReportsJob implements ShouldQueue
             }
 
             // Audit log
-            \App\Core\Audit\AuditService::log(
-                action: 'SCHEDULED_REPORTS_SENT',
-                status: 'success',
-                model_type: 'ScheduledReport',
-                description: "Sent {$reports->count()} scheduled reports",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'SCHEDULED_REPORTS_SENT',
+                'ScheduledReport',
+                null,
+                null,
+                null,
+                "Sent {$reports->count()} scheduled reports",
+                [
                     'reports_sent' => $reports->count(),
                     'timestamp' => now()->toDateTimeString(),
                 ]
             );
         } catch (\Exception $e) {
-            \App\Core\Audit\AuditService::log(
-                action: 'SCHEDULED_REPORTS_FAILED',
-                status: 'failed',
-                model_type: 'ScheduledReport',
-                description: 'Failed to send scheduled reports: ' . $e->getMessage(),
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'SCHEDULED_REPORTS_FAILED',
+                'ScheduledReport',
+                null,
+                null,
+                null,
+                'Failed to send scheduled reports: ' . $e->getMessage(),
+                [
                     'error' => $e->getMessage(),
                 ]
             );
@@ -97,13 +101,14 @@ class SendScheduledReportsJob implements ShouldQueue
             $report->update(['last_sent_at' => now()]);
         } catch (\Exception $e) {
             // Log individual report failure
-            \App\Core\Audit\AuditService::log(
-                action: 'SCHEDULED_REPORT_FAILED',
-                status: 'failed',
-                model_type: 'ScheduledReport',
-                model_id: $report->id,
-                description: "Failed to send scheduled report '{$report->report_type}': {$e->getMessage()}",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'SCHEDULED_REPORT_FAILED',
+                'ScheduledReport',
+                $report->id,
+                null,
+                null,
+                "Failed to send scheduled report '{$report->report_type}': {$e->getMessage()}",
+                [
                     'report_id' => $report->id,
                     'error' => $e->getMessage(),
                 ]

@@ -12,7 +12,8 @@ class BudgetLinePolicy
      */
     public function viewAny(User $user): bool
     {
-        return $user->hasPermission('budget.view');
+        return $user->hasPermission('budget.view') || 
+               $user->hasAnyRole(['finance-manager', 'admin', 'super-admin', 'principal', 'hod', 'department-head', 'requisitioner']);
     }
 
     /**
@@ -20,18 +21,26 @@ class BudgetLinePolicy
      */
     public function view(User $user, BudgetLine $budgetLine): bool
     {
-        // Finance can view all budgets
-        if ($user->hasAnyRole(['finance_manager', 'admin', 'super_admin'])) {
+        // Finance/Admin can view all budgets
+        if ($user->hasAnyRole(['finance-manager', 'admin', 'super-admin', 'principal'])) {
             return true;
         }
 
-        // Department heads can view their department's budgets
-        if ($user->hasRole('department_head') && $budgetLine->cost_center?->department_id === $user->department_id) {
+        // Department heads / HODs can view their department's budgets
+        // Check both department_id directly and via cost_center if available
+        $isMyDepartment = $budgetLine->department_id === $user->department_id;
+        
+        if (($user->hasRole('department-head') || $user->hasRole('hod')) && $isMyDepartment) {
             return true;
         }
 
-        // Requisitioners can view budgets if they're in the same department
-        if ($user->hasRole('requisitioner') && $budgetLine->cost_center?->department_id === $user->department_id) {
+        // Requisitioners/Staff can view budgets if they're in the same department
+        if (($user->hasRole('requisitioner') || $user->hasRole('staff')) && $isMyDepartment) {
+            return true;
+        }
+
+        // Budget owners
+        if ($user->id === $budgetLine->submitted_by) {
             return true;
         }
 
@@ -43,7 +52,7 @@ class BudgetLinePolicy
      */
     public function create(User $user): bool
     {
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['finance-manager', 'admin', 'super-admin'])
             && $user->hasPermission('budget.manage');
     }
 
@@ -57,7 +66,7 @@ class BudgetLinePolicy
             return false;
         }
 
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['finance-manager', 'admin', 'super-admin'])
             && $user->hasPermission('budget.manage');
     }
 
@@ -72,11 +81,11 @@ class BudgetLinePolicy
 
         // Check allocation authority based on user's approval limit
         $userApprovalLimit = $user->approval_limit ?? 0;
-        if ($budgetLine->allocated_amount > $userApprovalLimit && !$user->hasRole('super_admin')) {
+        if ($budgetLine->allocated_amount > $userApprovalLimit && !$user->hasRole('super-admin')) {
             return false;
         }
 
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['finance-manager', 'admin', 'super-admin'])
             && $user->hasPermission('budget.approve');
     }
 
@@ -98,8 +107,8 @@ class BudgetLinePolicy
      */
     public function viewExecutionReport(User $user, BudgetLine $budgetLine): bool
     {
-        return $user->hasAnyRole(['finance_manager', 'procurement_officer', 'admin', 'super_admin'])
-            || ($user->hasRole('department_head') && $budgetLine->cost_center?->department_id === $user->department_id);
+        return $user->hasAnyRole(['finance-manager', 'procurement-officer', 'admin', 'super-admin'])
+            || ($user->hasRole('department-head') && $budgetLine->cost_center?->department_id === $user->department_id);
     }
 
     /**
@@ -107,7 +116,7 @@ class BudgetLinePolicy
      */
     public function viewVarianceAnalysis(User $user): bool
     {
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin']);
+        return $user->hasAnyRole(['finance-manager', 'admin', 'super-admin']);
     }
 
     /**
@@ -115,7 +124,7 @@ class BudgetLinePolicy
      */
     public function finalizeBudget(User $user, BudgetLine $budgetLine): bool
     {
-        return $user->hasRole('super_admin');
+        return $user->hasRole('super-admin');
     }
 
     /**
@@ -123,6 +132,6 @@ class BudgetLinePolicy
      */
     public function export(User $user): bool
     {
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin']);
+        return $user->hasAnyRole(['finance-manager', 'admin', 'super-admin']);
     }
 }

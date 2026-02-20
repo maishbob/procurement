@@ -146,10 +146,10 @@
                             {{ $requisition->created_at->format('d M Y') }}
                         </td>
                         <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            {{ $requisition->department->name }}
+                            {{ $requisition->department?->name ?? 'N/A' }}
                         </td>
                         <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            {{ $requisition->requester->full_name }}
+                            {{ $requisition->requester?->name ?? 'N/A' }}
                         </td>
                         <td class="px-3 py-4 text-sm text-gray-900 max-w-xs truncate">
                             {{ $requisition->purpose }}

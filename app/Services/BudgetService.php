@@ -1,3 +1,4 @@
+use App\Events\BudgetThresholdExceededEvent;
 <?php
 
 namespace App\Services;
@@ -7,7 +8,6 @@ use App\Models\BudgetLine;
 use App\Models\BudgetTransaction;
 use App\Models\CostCenter;
 use App\Models\Department;
-use Illuminate\Pagination\Paginator;
 
 class BudgetService
 {
@@ -29,10 +29,11 @@ class BudgetService
 
         $this->auditService->log(
             action: 'BUDGET_ALLOCATED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $budgetLine->id,
-            description: "Budget allocated to {$costCenter->name} for fiscal year {$fiscalYear}: KES " . number_format($amount, 2),
+            model: 'BudgetLine',
+            modelId: $budgetLine->id,
+            metadata: [
+                'description' => "Budget allocated to {$costCenter->name} for fiscal year {$fiscalYear}: KES " . number_format($amount, 2),
+            ],
         );
 
         return $budgetLine;
@@ -47,18 +48,22 @@ class BudgetService
             throw new \Exception("Insufficient available budget to reallocate");
         }
 
+        $fromName = $from->costCenter?->name ?? $from->department?->name ?? "Budget Line #{$from->id}";
+        $toName   = $to->costCenter?->name   ?? $to->department?->name   ?? "Budget Line #{$to->id}";
+
         $from->decrement('allocated_amount', $amount);
         $to->increment('allocated_amount', $amount);
 
-        $this->recordBudgetTransaction($from, 'reallocation_out', $amount, "Reallocated to {$to->costCenter->name}");
-        $this->recordBudgetTransaction($to, 'reallocation_in', $amount, "Reallocated from {$from->costCenter->name}");
+        $this->recordBudgetTransaction($from, 'reallocation_out', $amount, "Reallocated to {$toName}");
+        $this->recordBudgetTransaction($to, 'reallocation_in', $amount, "Reallocated from {$fromName}");
 
         $this->auditService->log(
             action: 'BUDGET_REALLOCATED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $from->id,
-            description: "KES " . number_format($amount, 2) . " reallocated from {$from->costCenter->name} to {$to->costCenter->name}",
+            model: 'BudgetLine',
+            modelId: $from->id,
+            metadata: [
+                'description' => "KES " . number_format($amount, 2) . " reallocated from {$fromName} to {$toName}",
+            ],
         );
     }
 
@@ -72,64 +77,91 @@ class BudgetService
         }
 
         $budgetLine->increment('committed_amount', $amount);
+        $budgetLine->refresh();
 
         $this->recordBudgetTransaction($budgetLine, 'commitment', $amount, "{$referenceType} #{$referenceId}");
 
         $this->auditService->log(
             action: 'BUDGET_COMMITTED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $budgetLine->id,
-            description: "{$referenceType} #{$referenceId} committed KES " . number_format($amount, 2),
+            model: 'BudgetLine',
+            modelId: $budgetLine->id,
+            metadata: [
+                'description' => "{$referenceType} #{$referenceId} committed KES " . number_format($amount, 2),
+            ],
         );
     }
 
     /**
-     * Release committed budget (when requisition is cancelled, etc)
+     * Release committed budget (when requisition is cancelled, etc).
+     * Safely releases only up to the currently committed amount to prevent
+     * negative committed_amount values when price variances occur.
      */
     public function releaseCommitment(BudgetLine $budgetLine, float $amount, string $reason): void
     {
-        if ($budgetLine->committed_amount < $amount) {
-            throw new \Exception("Cannot release more than committed amount");
+        $toRelease = min($amount, (float) $budgetLine->committed_amount);
+
+        if ($toRelease <= 0) {
+            return;
         }
 
-        $budgetLine->decrement('committed_amount', $amount);
+        $budgetLine->decrement('committed_amount', $toRelease);
 
-        $this->recordBudgetTransaction($budgetLine, 'commitment_release', $amount, $reason);
+        $this->recordBudgetTransaction($budgetLine, 'commitment_release', $toRelease, $reason);
 
         $this->auditService->log(
             action: 'BUDGET_COMMITMENT_RELEASED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $budgetLine->id,
-            description: "Commitment released: KES " . number_format($amount, 2) . ". Reason: {$reason}",
+            model: 'BudgetLine',
+            modelId: $budgetLine->id,
+            metadata: [
+                'description' => "Commitment released: KES " . number_format($toRelease, 2) . ". Reason: {$reason}",
+            ],
         );
     }
 
     /**
-     * Record actual spending against budget
+     * Record actual spending against budget.
+     *
+     * Handles price variances between committed (PO) amount and actual invoice
+     * amount: commitment is released up to the committed balance, and the actual
+     * invoice amount is recorded as spent.
      */
     public function recordExpenditure(BudgetLine $budgetLine, float $amount, string $referenceType, int $referenceId): void
     {
-        // Release commitment when invoice is paid
-        $this->releaseCommitment($budgetLine, $amount, "Released due to actual payment for {$referenceType} #{$referenceId}");
+        // Release commitment safely — capped at current committed balance so a
+        // price variance (invoice > PO) does not crash with an exception.
+        $this->releaseCommitment(
+            $budgetLine,
+            $amount,
+            "Released due to actual payment for {$referenceType} #{$referenceId}"
+        );
 
-        // Record as spent
+        // Record actual amount as spent
         $budgetLine->increment('spent_amount', $amount);
 
         $this->recordBudgetTransaction($budgetLine, 'expenditure', $amount, "{$referenceType} #{$referenceId}");
 
-        // Fire event if budget threshold exceeded
-        if ($budgetLine->utilization_percent > 90) {
-            // TODO: Dispatch BudgetThresholdExceededEvent
+        // Log a warning when utilisation exceeds 90% threshold
+        if ($budgetLine->fresh()->utilization_percentage > 90) {
+            \Log::warning('[BudgetService] Budget line nearing limit (>90%)', [
+                'budget_line_id'  => $budgetLine->id,
+                'utilization_pct' => $budgetLine->utilization_percentage,
+                'department_id'   => $budgetLine->department_id,
+                'fiscal_year'     => $budgetLine->fiscal_year,
+            ]);
+            event(new BudgetThresholdExceededEvent(
+                $budgetLine,
+                $budgetLine->utilization_percentage,
+                '90%'
+            ));
         }
 
         $this->auditService->log(
             action: 'BUDGET_EXECUTED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $budgetLine->id,
-            description: "Expenditure recorded: KES " . number_format($amount, 2),
+            model: 'BudgetLine',
+            modelId: $budgetLine->id,
+            metadata: [
+                'description' => "Expenditure recorded: KES " . number_format($amount, 2),
+            ],
         );
     }
 
@@ -151,32 +183,40 @@ class BudgetService
      */
     public function getDepartmentBudgetReport(Department $department, string $fiscalYear): array
     {
-        $budgetLines = BudgetLine::whereHas('costCenter', function ($q) use ($department) {
-            $q->where('department_id', $department->id);
-        })->where('fiscal_year', $fiscalYear)->get();
+        // Query by department_id (the canonical relationship on BudgetLine)
+        $budgetLines = BudgetLine::where('department_id', $department->id)
+            ->where('fiscal_year', $fiscalYear)
+            ->get();
 
         $totalAllocated = $budgetLines->sum('allocated_amount');
         $totalCommitted = $budgetLines->sum('committed_amount');
-        $totalSpent = $budgetLines->sum('spent_amount');
+        $totalSpent     = $budgetLines->sum('spent_amount');
         $totalAvailable = $budgetLines->sum('available_amount');
 
         return [
-            'department' => $department,
-            'fiscal_year' => $fiscalYear,
-            'total_allocated' => $totalAllocated,
-            'total_committed' => $totalCommitted,
-            'total_spent' => $totalSpent,
-            'total_available' => $totalAvailable,
+            'department'          => $department,
+            'fiscal_year'         => $fiscalYear,
+            'total_allocated'     => $totalAllocated,
+            'total_committed'     => $totalCommitted,
+            'total_spent'         => $totalSpent,
+            'total_available'     => $totalAvailable,
             'utilization_percent' => $totalAllocated > 0 ? ($totalSpent / $totalAllocated * 100) : 0,
-            'commitment_percent' => $totalAllocated > 0 ? ($totalCommitted / $totalAllocated * 100) : 0,
-            'budget_lines' => $budgetLines->map(function ($line) {
+            'commitment_percent'  => $totalAllocated > 0 ? ($totalCommitted / $totalAllocated * 100) : 0,
+            'budget_lines'        => $budgetLines->map(function ($line) {
+                // Use cost center name when available, fall back to department / description
+                $label = $line->costCenter?->name
+                    ?? $line->department?->name
+                    ?? $line->description
+                    ?? "Budget Line #{$line->id}";
+
                 return [
-                    'cost_center' => $line->costCenter->name,
-                    'allocated' => $line->allocated_amount,
-                    'committed' => $line->committed_amount,
-                    'spent' => $line->spent_amount,
-                    'available' => $line->available_amount,
-                    'utilization' => $line->utilization_percent,
+                    'cost_center' => $label,
+                    'category'    => $line->category,
+                    'allocated'   => $line->allocated_amount,
+                    'committed'   => $line->committed_amount,
+                    'spent'       => $line->spent_amount,
+                    'available'   => $line->available_amount,
+                    'utilization' => $line->utilization_percentage,
                 ];
             }),
         ];
@@ -190,22 +230,29 @@ class BudgetService
         $budgetLines = BudgetLine::where('fiscal_year', $fiscalYear)->get();
 
         return $budgetLines->map(function ($line) {
-            $variance = $line->allocated_amount - $line->spent_amount;
+            $variance        = $line->allocated_amount - $line->spent_amount;
             $variancePercent = $line->allocated_amount > 0 ? ($variance / $line->allocated_amount * 100) : 0;
 
+            // Use cost center name when available, fall back gracefully
+            $label = $line->costCenter?->name
+                ?? $line->department?->name
+                ?? $line->description
+                ?? "Budget Line #{$line->id}";
+
             return [
-                'cost_center' => $line->costCenter->name,
-                'allocated' => $line->allocated_amount,
-                'spent' => $line->spent_amount,
-                'variance' => $variance,
+                'cost_center'      => $label,
+                'allocated'        => $line->allocated_amount,
+                'spent'            => $line->spent_amount,
+                'variance'         => $variance,
                 'variance_percent' => $variancePercent,
-                'status' => $variancePercent > 10 ? 'underspent' : (abs($variancePercent) <= 10 ? 'on_track' : 'overspent'),
+                'status'           => $variancePercent > 10 ? 'underspent'
+                    : (abs($variancePercent) <= 10 ? 'on_track' : 'overspent'),
             ];
         })->sortBy('variance_percent')->values()->toArray();
     }
 
     /**
-     * Check if budget is available for requisition
+     * Check if budget is available for a cost center
      */
     public function isBudgetAvailable(CostCenter $costCenter, float $amount, string $fiscalYear): bool
     {
@@ -229,10 +276,11 @@ class BudgetService
 
         $this->auditService->log(
             action: 'BUDGET_YEAR_FINALIZED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: 0,
-            description: "All budgets for fiscal year {$fiscalYear} have been finalized and locked",
+            model: 'BudgetLine',
+            modelId: 0,
+            metadata: [
+                'description' => "All budgets for fiscal year {$fiscalYear} have been finalized and locked",
+            ],
         );
     }
 
@@ -252,12 +300,12 @@ class BudgetService
         return [
             'operational' => [
                 'allocated' => $operational->sum('allocated_amount'),
-                'spent' => $operational->sum('spent_amount'),
+                'spent'     => $operational->sum('spent_amount'),
                 'available' => $operational->sum('available_amount'),
             ],
             'capital' => [
                 'allocated' => $capital->sum('allocated_amount'),
-                'spent' => $capital->sum('spent_amount'),
+                'spent'     => $capital->sum('spent_amount'),
                 'available' => $capital->sum('available_amount'),
             ],
         ];

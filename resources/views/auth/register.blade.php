@@ -69,11 +69,6 @@
                     </button>
                 </div>
 
-                <div class="text-center">
-                    <a href="{{ route('welcome') }}" class="text-sm text-gray-600 hover:text-gray-900">
-                        â† Back to home
-                    </a>
-                </div>
             </form>
         </div>
     </div>

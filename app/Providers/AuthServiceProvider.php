@@ -4,7 +4,8 @@ namespace App\Providers;
 
 use App\Models\AuditLog;
 use App\Models\BudgetLine;
-use App\Models\GoodsReceivedNote;
+use App\Models\Department;
+use App\Modules\GRN\Models\GoodsReceivedNote;
 use App\Models\InventoryItem;
 use App\Models\Payment;
 use App\Models\PurchaseOrder;
@@ -14,6 +15,7 @@ use App\Models\SupplierInvoice;
 use App\Models\User;
 use App\Policies\AuditLogPolicy;
 use App\Policies\BudgetLinePolicy;
+use App\Policies\DepartmentPolicy;
 use App\Policies\GRNPolicy;
 use App\Policies\InventoryPolicy;
 use App\Policies\InvoicePolicy;
@@ -34,6 +36,7 @@ class AuthServiceProvider extends ServiceProvider
     protected $policies = [
         AuditLog::class => AuditLogPolicy::class,
         BudgetLine::class => BudgetLinePolicy::class,
+        Department::class => DepartmentPolicy::class,
         GoodsReceivedNote::class => GRNPolicy::class,
         InventoryItem::class => InventoryPolicy::class,
         Payment::class => PaymentPolicy::class,
@@ -43,6 +46,8 @@ class AuthServiceProvider extends ServiceProvider
         SupplierInvoice::class => InvoicePolicy::class,
         User::class => UserPolicy::class,
         \App\Models\ProcurementProcess::class => \App\Policies\ProcurementProcessPolicy::class,
+        \App\Models\AnnualProcurementPlan::class => \App\Policies\AnnualProcurementPlanPolicy::class,
+        \App\Modules\Quality\Models\CapaAction::class => \App\Policies\CapaPolicy::class,
     ];
 
     /**

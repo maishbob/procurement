@@ -154,7 +154,7 @@
                         <option value="">Select Budget Line</option>
                         @foreach($budgetLines ?? [] as $budget)
                         <option value="{{ $budget->id }}" {{ old('budget_line_id', $requisition->budget_line_id ?? '') == $budget->id ? 'selected' : '' }}>
-                            {{ $budget->code }} - {{ $budget->name }} (Available: {{ number_format($budget->available_amount, 2) }})
+                            {{ $budget->budget_code }} - {{ $budget->name }} (Available: {{ number_format($budget->available_amount, 2) }})
                         </option>
                         @endforeach
                     </select>

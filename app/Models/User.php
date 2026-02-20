@@ -182,6 +182,56 @@ class User extends Authenticatable
     }
 
     /**
+     * Get notification preferences for this user.
+     *
+     * Preferences are stored in the `notification_preferences` JSON column when
+     * it exists; otherwise sensible system-wide defaults are returned so callers
+     * never receive a null/missing-method error.
+     */
+    public function getUserPreferences(): array
+    {
+        $stored = [];
+        if (isset($this->attributes['notification_preferences'])) {
+            $stored = json_decode($this->attributes['notification_preferences'], true) ?? [];
+        }
+
+        return array_merge([
+            'notification_sms'             => config('procurement.notifications.sms_enabled', env('NOTIFY_SMS_ENABLED', false)),
+            'notification_email'           => config('procurement.notifications.email_enabled', env('NOTIFY_EMAIL_ENABLED', true)),
+            'notification_email_requisition' => true,
+            'notification_email_po'          => true,
+            'notification_email_invoice'     => true,
+            'notification_email_payment'     => true,
+            'notification_sms_urgent'        => false,
+        ], $stored);
+    }
+
+    /**
+     * Get initials from user name
+     */
+    public function getInitialsAttribute(): string
+    {
+        $parts = explode(' ', trim($this->name));
+        $initials = '';
+
+        foreach ($parts as $part) {
+            if (!empty($part)) {
+                $initials .= strtoupper($part[0]);
+            }
+        }
+
+        return substr($initials, 0, 2) ?: 'U';
+    }
+
+    /**
+     * Get first name from full name
+     */
+    public function getFirstNameAttribute(): string
+    {
+        return explode(' ', trim($this->name))[0] ?? 'User';
+    }
+
+    /**
      * Formatted Attributes
      */
     public function getStatusLabelAttribute(): string

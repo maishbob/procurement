@@ -17,13 +17,14 @@ class NotifySupplierListener
         $supplier = $purchaseOrder->supplier;
 
         if (!$supplier || !$supplier->email) {
-            \App\Core\Audit\AuditService::log(
-                action: 'SUPPLIER_NOTIFICATION_SKIPPED',
-                status: 'warning',
-                model_type: 'PurchaseOrder',
-                model_id: $purchaseOrder->id,
-                description: 'Supplier has no email address',
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'SUPPLIER_NOTIFICATION_SKIPPED',
+                'PurchaseOrder',
+                $purchaseOrder->id,
+                null,
+                null,
+                'Supplier has no email address',
+                [
                     'supplier_id' => $supplier?->id,
                 ]
             );
@@ -42,13 +43,14 @@ class NotifySupplierListener
         }
 
         // Audit log
-        \App\Core\Audit\AuditService::log(
-            action: 'SUPPLIER_NOTIFIED',
-            status: 'success',
-            model_type: 'PurchaseOrder',
-            model_id: $purchaseOrder->id,
-            description: "Notified supplier {$supplier->name} of PO {$purchaseOrder->po_number}",
-            metadata: [
+        app(\App\Core\Audit\AuditService::class)->log(
+            'SUPPLIER_NOTIFIED',
+            'PurchaseOrder',
+            $purchaseOrder->id,
+            null,
+            null,
+            "Notified supplier {$supplier->name} of PO {$purchaseOrder->po_number}",
+            [
                 'supplier_id' => $supplier->id,
                 'supplier_email' => $supplier->email,
                 'po_number' => $purchaseOrder->po_number,

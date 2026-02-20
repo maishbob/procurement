@@ -28,15 +28,20 @@ class GRNItem extends Model
         'quality_check_passed',
         'quality_notes',
         'notes',
+        'serial_number',
+        'batch_number',
+        'expiry_date',
+        'storage_location',
     ];
 
     protected $casts = [
-        'quantity_ordered' => 'integer',
+        'quantity_ordered'  => 'integer',
         'quantity_received' => 'integer',
         'quantity_accepted' => 'integer',
         'quantity_rejected' => 'integer',
-        'variance' => 'integer',
+        'variance'          => 'integer',
         'quality_check_passed' => 'boolean',
+        'expiry_date'       => 'date',
     ];
 
     /**

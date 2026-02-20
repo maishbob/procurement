@@ -10,6 +10,8 @@ use App\Core\Workflow\WorkflowEngine;
 use App\Core\Rules\GovernanceRules;
 use App\Core\TaxEngine\TaxEngine;
 use App\Core\CurrencyEngine\CurrencyEngine;
+use App\Models\BudgetLine;
+use App\Services\BudgetService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Exception;
@@ -27,19 +29,22 @@ class PaymentService
     protected GovernanceRules $governanceRules;
     protected TaxEngine $taxEngine;
     protected CurrencyEngine $currencyEngine;
+    protected BudgetService $budgetService;
 
     public function __construct(
         AuditService $auditService,
         WorkflowEngine $workflowEngine,
         GovernanceRules $governanceRules,
         TaxEngine $taxEngine,
-        CurrencyEngine $currencyEngine
+        CurrencyEngine $currencyEngine,
+        BudgetService $budgetService
     ) {
         $this->auditService = $auditService;
         $this->workflowEngine = $workflowEngine;
         $this->governanceRules = $governanceRules;
         $this->taxEngine = $taxEngine;
         $this->currencyEngine = $currencyEngine;
+        $this->budgetService = $budgetService;
     }
 
     /**
@@ -60,6 +65,9 @@ class PaymentService
         if ($supplierIds->count() > 1) {
             throw new Exception("Cannot create payment for multiple suppliers");
         }
+
+        // No-PO-No-Pay / No-GRN-No-Pay / No-Acceptance-No-Pay chain guard
+        $this->validatePaymentChain($invoices);
 
         $supplier = $invoices->first()->supplier;
 
@@ -218,6 +226,9 @@ class PaymentService
         return DB::transaction(function () use ($payment, $comments) {
             $approverId = Auth::id();
 
+            // Validate eTIMS compliance for all invoices
+            $this->validateEtimsCompliance($payment);
+
             // Enforce segregation of duties
             $this->governanceRules->enforceSegregationOfDuties(
                 $approverId,
@@ -368,6 +379,62 @@ class PaymentService
     }
 
     /**
+     * Validate eTIMS compliance for payment approval
+     * 
+     * @throws Exception if any invoice lacks eTIMS control number
+     */
+    protected function validateEtimsCompliance(Payment $payment): void
+    {
+        $etimsEnabled = config('procurement.etims.enabled', true);
+        $etimsEnforcement = config('procurement.etims.enforce_on_payment', true);
+
+        if (!$etimsEnabled || !$etimsEnforcement) {
+            return;
+        }
+
+        $payment->load('invoices');
+        $nonCompliantInvoices = [];
+
+        foreach ($payment->invoices as $invoice) {
+            // Must have both a control number AND confirmed eTIMS verification
+            if (empty($invoice->etims_control_number) || !$invoice->etims_verified) {
+                $nonCompliantInvoices[] = [
+                    'invoice_number'          => $invoice->invoice_number,
+                    'supplier_invoice_number' => $invoice->supplier_invoice_number,
+                    'amount'                  => $invoice->total_amount,
+                    'reason'                  => empty($invoice->etims_control_number)
+                        ? 'missing control number'
+                        : 'eTIMS verification pending',
+                ];
+            }
+        }
+
+        if (!empty($nonCompliantInvoices)) {
+            $invoiceList = collect($nonCompliantInvoices)
+                ->map(fn($inv) => "{$inv['invoice_number']} ({$inv['reason']})")
+                ->join(', ');
+
+            throw new Exception(
+                "Payment cannot be approved: eTIMS validation required. " .
+                    "The following invoices are not eTIMS-verified: {$invoiceList}. " .
+                    "Please ensure all invoices have been verified against KRA eTIMS before approval."
+            );
+        }
+
+        // Log eTIMS compliance check
+        $this->auditService->logCustom(
+            Payment::class,
+            $payment->id,
+            'etims_compliance_validated',
+            [
+                'invoice_count' => $payment->invoices->count(),
+                'validated_at' => Carbon::now(),
+                'validated_by' => Auth::id(),
+            ]
+        );
+    }
+
+    /**
      * Generate unique payment number
      */
     protected function generatePaymentNumber(): string
@@ -429,11 +496,124 @@ class PaymentService
     }
 
     /**
-     * Update budget spent amounts
+     * Update budget spent amounts when a payment is processed.
+     *
+     * Traverses: payment → invoices → purchaseOrder → requisition → budget_line_id
+     * and calls BudgetService::recordExpenditure() for each linked budget line.
+     * Skips invoices that cannot be traced back to a budget line (gracefully).
      */
-    protected function updateBudgetSpent(Payment $payment): void
+    public function updateBudgetSpent(Payment $payment): void
     {
-        // Implementation would update budget line spent amounts
-        // based on the invoices being paid
+        $payment->load('invoices.purchaseOrder.requisition');
+
+        foreach ($payment->invoices as $invoice) {
+            $allocatedAmount = (float) $invoice->pivot->amount_allocated;
+
+            $po = $invoice->purchaseOrder;
+            if (!$po || !$po->requisition_id) {
+                continue;
+            }
+
+            $requisition = $po->requisition;
+            if (!$requisition || !$requisition->budget_line_id) {
+                continue;
+            }
+
+            $budgetLine = BudgetLine::find($requisition->budget_line_id);
+            if (!$budgetLine) {
+                continue;
+            }
+
+            $this->budgetService->recordExpenditure(
+                $budgetLine,
+                $allocatedAmount,
+                'Payment',
+                $payment->id
+            );
+        }
+    }
+
+    /**
+     * No-PO-No-Pay / No-GRN-No-Pay / No-Acceptance-No-Pay chain guard.
+     *
+     * For each invoice in the proposed payment:
+     *   1. Must have a linked, approved Purchase Order.
+     *   2. Must have a linked GRN with acceptance_status accepted or partially_accepted.
+     *
+     * @throws Exception with the invoice number and the broken link.
+     */
+
+    protected function validatePaymentChain($invoices): void
+    {
+        // Ensure $invoices is an Eloquent Collection for load() to work
+        if (!$invoices instanceof \Illuminate\Database\Eloquent\Collection) {
+            $ids = $invoices->pluck('id');
+            $invoices = \App\Modules\Finance\Models\SupplierInvoice::whereIn('id', $ids)
+                ->with(['purchaseOrder', 'goodsReceivedNote'])
+                ->get();
+        } else {
+            $invoices->load(['purchaseOrder', 'goodsReceivedNote']);
+        }
+
+        $validPoStatuses  = ['approved', 'issued', 'acknowledged', 'fully_received', 'invoiced'];
+        $validGrnAcceptance = ['accepted', 'partially_accepted'];
+
+        foreach ($invoices as $invoice) {
+            $ref = isset($invoice->invoice_number) ? $invoice->invoice_number : (isset($invoice->id) ? "ID:{$invoice->id}" : 'UNKNOWN');
+
+            // 1. No-PO-No-Pay
+            $po = null;
+            if (method_exists($invoice, 'getAttribute')) {
+                $po = $invoice->getAttribute('purchaseOrder');
+            }
+            if (!$po && method_exists($invoice, 'getRelationValue')) {
+                $po = $invoice->getRelationValue('purchaseOrder');
+            }
+            if (!$po && isset($invoice->purchaseOrder)) {
+                $po = $invoice->purchaseOrder;
+            }
+            if (!$po && method_exists($invoice, 'purchaseOrder')) {
+                $po = $invoice->purchaseOrder;
+            }
+            if (!$po) {
+                throw new Exception(
+                    "Payment blocked — invoice {$ref} has no linked Purchase Order (No PO, No Pay)."
+                );
+            }
+            $poStatus = isset($po->status) ? $po->status : null;
+            $poNumber = isset($po->po_number) ? $po->po_number : 'UNKNOWN';
+            if (!in_array($poStatus, $validPoStatuses)) {
+                throw new Exception(
+                    "Payment blocked — invoice {$ref}: linked PO #{$poNumber} is in '{$poStatus}' status and has not been approved."
+                );
+            }
+
+            // 2. No-GRN-No-Pay + No-Acceptance-No-Pay
+            $grn = null;
+            if (method_exists($invoice, 'getAttribute')) {
+                $grn = $invoice->getAttribute('goodsReceivedNote');
+            }
+            if (!$grn && method_exists($invoice, 'getRelationValue')) {
+                $grn = $invoice->getRelationValue('goodsReceivedNote');
+            }
+            if (!$grn && isset($invoice->goodsReceivedNote)) {
+                $grn = $invoice->goodsReceivedNote;
+            }
+            if (!$grn && method_exists($invoice, 'goodsReceivedNote')) {
+                $grn = $invoice->goodsReceivedNote;
+            }
+            if (!$grn) {
+                throw new Exception(
+                    "Payment blocked — invoice {$ref} has no linked Goods Received Note (No GRN, No Pay)."
+                );
+            }
+            $acceptanceStatus = isset($grn->acceptance_status) ? $grn->acceptance_status : null;
+            $grnNumber = isset($grn->grn_number) ? $grn->grn_number : 'UNKNOWN';
+            if (!in_array($acceptanceStatus, $validGrnAcceptance)) {
+                throw new Exception(
+                    "Payment blocked — invoice {$ref}: GRN #{$grnNumber} has not been accepted by the department (acceptance status: {$acceptanceStatus})."
+                );
+            }
+        }
     }
 }

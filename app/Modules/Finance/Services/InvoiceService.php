@@ -4,13 +4,14 @@ namespace App\Modules\Finance\Services;
 
 use App\Modules\Finance\Models\SupplierInvoice;
 use App\Modules\Finance\Models\SupplierInvoiceItem;
-use App\Modules\PurchaseOrders\Models\PurchaseOrder;
 use App\Modules\GRN\Models\GoodsReceivedNote;
 use App\Core\Audit\AuditService;
 use App\Core\Workflow\WorkflowEngine;
 use App\Core\Rules\GovernanceRules;
 use App\Core\TaxEngine\TaxEngine;
 use App\Core\CurrencyEngine\CurrencyEngine;
+use App\Jobs\VerifyEtimsInvoiceJob;
+use App\Modules\Quality\Services\CapaService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Exception;
@@ -28,19 +29,22 @@ class InvoiceService
     protected GovernanceRules $governanceRules;
     protected TaxEngine $taxEngine;
     protected CurrencyEngine $currencyEngine;
+    protected CapaService $capaService;
 
     public function __construct(
         AuditService $auditService,
         WorkflowEngine $workflowEngine,
         GovernanceRules $governanceRules,
         TaxEngine $taxEngine,
-        CurrencyEngine $currencyEngine
+        CurrencyEngine $currencyEngine,
+        CapaService $capaService
     ) {
         $this->auditService = $auditService;
         $this->workflowEngine = $workflowEngine;
         $this->governanceRules = $governanceRules;
         $this->taxEngine = $taxEngine;
         $this->currencyEngine = $currencyEngine;
+        $this->capaService = $capaService;
     }
 
     /**
@@ -50,6 +54,14 @@ class InvoiceService
     {
         if (!$grn->isApproved()) {
             throw new Exception("Can only create invoice from approved GRN");
+        }
+
+        if (!$grn->isAccepted()) {
+            throw new Exception(
+                "GRN #{$grn->grn_number} has not been accepted by the department " .
+                "(current acceptance status: {$grn->acceptance_status}). " .
+                "The receiving department must accept the delivery before an invoice can be raised."
+            );
         }
 
         return DB::transaction(function () use ($grn, $data) {
@@ -79,6 +91,9 @@ class InvoiceService
                 $invoice->toArray(),
                 ['module' => 'finance', 'grn_id' => $grn->id]
             );
+
+            // Dispatch async eTIMS verification (no-op when ETIMS_ENABLED=false)
+            VerifyEtimsInvoiceJob::dispatch($invoice);
 
             return $invoice->load('items');
         });
@@ -125,32 +140,31 @@ class InvoiceService
         ];
 
         // Compare PO vs GRN vs Invoice amounts
-        $tolerance = config('procurement.three_way_match.tolerance_percentage', 2);
+        $tolerance = config('procurement.governance.three_way_match.tolerance_percentage', 2);
 
         // Check total amounts
         $poTotal = $po->total_amount;
-        $grnTotal = $grn->total_quantity_accepted * $po->items->avg('unit_price'); // Simplified
+        $poQuantity = $po->items->sum('quantity');
+        $grnQuantity = $grn->total_quantity_accepted;
+        $grnTotal = $grnQuantity * ($poQuantity > 0 ? $poTotal / $poQuantity : 0);
         $invoiceTotal = $invoice->total_amount;
+        $invoiceQuantity = $invoice->items->sum('quantity');
 
-        // Calculate variance
+        // Validate amounts via GovernanceRules using the structured array signature
         $poInvoiceVariance = $this->governanceRules->validateThreeWayMatch(
-            $poTotal,
-            $invoiceTotal,
-            $tolerance
+            ['quantity' => $poQuantity,    'amount' => $poTotal],
+            ['quantity' => $grnQuantity,   'amount' => $grnTotal],
+            ['quantity' => $invoiceQuantity, 'amount' => $invoiceTotal]
         );
 
-        if ($poInvoiceVariance['passed']) {
+        if ($poInvoiceVariance['matched']) {
             $matchResults['passed'] = true;
             $matchResults['details']['po_invoice_match'] = 'Passed';
         } else {
             $matchResults['details']['po_invoice_match'] = 'Failed';
-            $matchResults['variances'][] = [
-                'type' => 'po_invoice',
-                'po_amount' => $poTotal,
-                'invoice_amount' => $invoiceTotal,
-                'variance_percentage' => $poInvoiceVariance['variance_percentage'],
-                'tolerance' => $tolerance,
-            ];
+            foreach ($poInvoiceVariance['variances'] as $variance) {
+                $matchResults['variances'][] = array_merge(['type' => 'po_invoice'], $variance);
+            }
         }
 
         // Check line item quantities
@@ -206,12 +220,28 @@ class InvoiceService
 
         // Audit log
         $this->auditService->logCompliance(
+            'three_way_match',
             SupplierInvoice::class,
             $invoice->id,
-            'three_way_match',
-            $matchResults['passed'] ? 'passed' : 'failed',
-            $matchResults
+            $matchResults,
+            ['result' => $matchResults['passed'] ? 'passed' : 'failed']
         );
+
+        // Auto-trigger CAPA when three-way match fails
+        if (!$matchResults['passed']) {
+            $this->capaService->createFromVariance(
+                $invoice,
+                'SupplierInvoice',
+                [
+                    'title'             => "Three-way match failure on invoice #{$invoice->invoice_number}",
+                    'problem_statement' => 'Three-way match between PO, GRN, and invoice failed. Variances exceed tolerance.',
+                    'proposed_action'   => 'Review invoice against PO and GRN. Contact supplier to issue corrected invoice or credit note.',
+                    'priority'          => 'high',
+                    'type'              => 'corrective',
+                    'source'            => 'variance_analysis',
+                ]
+            );
+        }
 
         return $matchResults;
     }

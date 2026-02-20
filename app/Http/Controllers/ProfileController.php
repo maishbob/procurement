@@ -174,25 +174,26 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
-        $data = [
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'phone' => $user->phone,
-                'created_at' => $user->created_at,
-            ],
-            'roles' => $user->roles()->pluck('name')->toArray(),
-            'department' => $user->department?->name,
-            'audit_logs' => \App\Models\AuditLog::where('user_id', $user->id)
-                ->latest()
-                ->limit(100)
-                ->get()
-                ->toArray(),
-        ];
+        try {
+            $user->delete();
 
-        $filename = "user-data-{$user->id}-" . now()->format('Y-m-d-His') . '.json';
+            app(\App\Core\Audit\AuditService::class)->log(
+                'USER_DELETED',
+                'User',
+                $user->id,
+                null,
+                null,
+                'User account deleted',
+                [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                ]
+            );
 
+            return redirect('/')->with('success', 'Account deleted successfully');
+        } catch (\Exception $e) {
+            return back()->with('error', 'Failed to delete account: ' . $e->getMessage());
+        }
         return response()->json($data)
             ->header('Content-Disposition', "attachment; filename={$filename}");
     }

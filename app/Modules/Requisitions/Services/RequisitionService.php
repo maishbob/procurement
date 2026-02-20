@@ -2,7 +2,9 @@
 
 namespace App\Modules\Requisitions\Services;
 
+use App\Models\User;
 use App\Modules\Requisitions\Models\Requisition;
+use App\Modules\Requisitions\Models\RequisitionApproval;
 use App\Modules\Requisitions\Models\RequisitionItem;
 use App\Core\Audit\AuditService;
 use App\Core\Workflow\WorkflowEngine;
@@ -362,12 +364,92 @@ class RequisitionService
     }
 
     /**
-     * Create approval records based on requirements
+     * Create approval records when a requisition is submitted.
+     *
+     * Approval matrix:
+     *   HOD           — always when requires_hod_approval; matched by is_hod + department_id
+     *   budget_owner  — always required for budget review; matched by is_budget_owner +
+     *                   department_id, falls back to any budget owner in the system
+     *   principal     — when requires_principal_approval; matched by Spatie role 'principal'
+     *   board         — when requires_board_approval; one record per board-member role holder
+     *
+     * Records are created with status = 'pending'. Missing approvers are skipped
+     * (logged to audit trail so admins can investigate).
      */
     protected function createApprovalRecords(Requisition $requisition): void
     {
-        // Implementation would create actual approval records
-        // based on department hierarchy and approval matrix
+        // HOD approval
+        if ($requisition->requires_hod_approval) {
+            $hod = User::where('is_hod', true)
+                ->where('department_id', $requisition->department_id)
+                ->first();
+
+            if ($hod) {
+                RequisitionApproval::create([
+                    'requisition_id' => $requisition->id,
+                    'approval_level' => 'hod',
+                    'approver_id'    => $hod->id,
+                    'status'         => 'pending',
+                ]);
+            } else {
+                $this->auditService->logCreate(
+                    Requisition::class,
+                    $requisition->id,
+                    [],
+                    ['warning' => 'No HOD found for department ' . $requisition->department_id]
+                );
+            }
+        }
+
+        // Budget owner approval (always required for budget review stage)
+        $budgetOwner = User::where('is_budget_owner', true)
+            ->where('department_id', $requisition->department_id)
+            ->first()
+            ?? User::where('is_budget_owner', true)->first();
+
+        if ($budgetOwner) {
+            RequisitionApproval::create([
+                'requisition_id' => $requisition->id,
+                'approval_level' => 'budget_owner',
+                'approver_id'    => $budgetOwner->id,
+                'status'         => 'pending',
+            ]);
+        } else {
+            $this->auditService->logCreate(
+                Requisition::class,
+                $requisition->id,
+                [],
+                ['warning' => 'No budget owner found — budget review step will be blocked']
+            );
+        }
+
+        // Principal approval (large-amount requisitions)
+        if ($requisition->requires_principal_approval) {
+            $principal = User::role('principal')->first();
+
+            if ($principal) {
+                RequisitionApproval::create([
+                    'requisition_id' => $requisition->id,
+                    'approval_level' => 'principal',
+                    'approver_id'    => $principal->id,
+                    'status'         => 'pending',
+                ]);
+            }
+        }
+
+        // Board approval (highest-value requisitions — one record per board member)
+        if ($requisition->requires_board_approval) {
+            $boardMembers = User::role('board-member')->get();
+
+            foreach ($boardMembers as $member) {
+                RequisitionApproval::create([
+                    'requisition_id' => $requisition->id,
+                    'approval_level' => 'board',
+                    'approver_id'    => $member->id,
+                    'status'         => 'pending',
+                ]);
+            }
+        }
     }
 
     /**

@@ -57,6 +57,7 @@ class Requisition extends Model
         'single_source_justification',
         'preferred_supplier_id',
         'attachments',
+        'supporting_documents',
         'notes',
     ];
 
@@ -72,6 +73,7 @@ class Requisition extends Model
         'requires_board_approval' => 'boolean',
         'requires_tender' => 'boolean',
         'attachments' => 'array',
+        'supporting_documents' => 'array',
         'submitted_at' => 'datetime',
         'approved_at' => 'datetime',
         'rejected_at' => 'datetime',
@@ -86,6 +88,11 @@ class Requisition extends Model
     }
 
     public function requester(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'requested_by');
+    }
+
+    public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'requested_by');
     }

@@ -5,8 +5,12 @@ namespace Tests\Unit\Core;
 use Tests\TestCase;
 use App\Core\TaxEngine\TaxEngine;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
 class TaxEngineTest extends TestCase
 {
+    use RefreshDatabase;
+
     protected TaxEngine $taxEngine;
 
     protected function setUp(): void
@@ -24,8 +28,7 @@ class TaxEngineTest extends TestCase
         $vatRate = 16;
 
         $vat = $this->taxEngine->calculateVAT($amount, $vatRate);
-
-        $this->assertEquals(1600, $vat);
+        $this->assertEquals(1600, $vat['vat_amount']);
     }
 
     /**
@@ -36,12 +39,12 @@ class TaxEngineTest extends TestCase
         $amount = 50000;
 
         // Standard rate (2%)
-        $wht = $this->taxEngine->calculateWHT($amount, 'standard');
-        $this->assertEquals(1000, $wht);
+        $wht = $this->taxEngine->calculateWHT($amount, 'standard', 2);
+        $this->assertEquals(1000, $wht['wht_amount']);
 
         // Higher rate (5%)
-        $wht = $this->taxEngine->calculateWHT($amount, 'higher');
-        $this->assertEquals(2500, $wht);
+        $wht = $this->taxEngine->calculateWHT($amount, 'higher', 5);
+        $this->assertEquals(2500, $wht['wht_amount']);
     }
 
     /**
@@ -52,13 +55,13 @@ class TaxEngineTest extends TestCase
         $amount = 100000;
 
         $vat = $this->taxEngine->calculateVAT($amount, 16);
-        $grossAmount = $amount + $vat;
+        $grossAmount = $amount + $vat['vat_amount'];
 
-        $wht = $this->taxEngine->calculateWHT($grossAmount, 'standard');
-        $netAmount = $grossAmount - $wht;
+        $wht = $this->taxEngine->calculateWHT($grossAmount, 'standard', 2);
+        $netAmount = $grossAmount - $wht['wht_amount'];
 
         $this->assertEquals(116000, $grossAmount);
-        $this->assertEquals(2320, $wht);
+        $this->assertEquals(2320, $wht['wht_amount']);
         $this->assertEquals(113680, $netAmount);
     }
 

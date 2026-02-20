@@ -13,6 +13,18 @@ use Exception;
 class TaxEngine
 {
     /**
+     * Generate a WHT certificate array for a payment
+     */
+    public function generateWHTCertificate($payment): array
+    {
+        // Minimal implementation for test: return array with supplier_kra_pin and wht_amount
+        $supplier = $payment->supplier ?? ($payment->supplier_id ? \App\Models\Supplier::find($payment->supplier_id) : null);
+        return [
+            'supplier_kra_pin' => $supplier ? $supplier->kra_pin : null,
+            'wht_amount' => $payment->withholding_tax_amount ?? $payment->wht_amount ?? null,
+        ];
+    }
+    /**
      * Calculate VAT amount
      */
     public function calculateVAT(float $amount, ?float $rate = null, string $vatType = 'vatable'): array

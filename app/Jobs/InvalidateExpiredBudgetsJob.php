@@ -38,12 +38,14 @@ class InvalidateExpiredBudgetsJob implements ShouldQueue
             }
 
             // Log successful closure
-            \App\Core\Audit\AuditService::log(
-                action: 'BUDGETS_EXPIRED_CLOSED',
-                status: 'success',
-                model_type: 'BudgetLine',
-                description: "Closed {$closedCount} expired budget lines",
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'BUDGETS_EXPIRED_CLOSED',
+                'BudgetLine',
+                null,
+                null,
+                null,
+                "Closed {$closedCount} expired budget lines",
+                [
                     'budgets_closed' => $closedCount,
                     'timestamp' => now()->toDateTimeString(),
                 ]
@@ -52,12 +54,14 @@ class InvalidateExpiredBudgetsJob implements ShouldQueue
             // Send notifications to affected departments
             $this->notifyDepartments($expiredBudgets);
         } catch (\Exception $e) {
-            \App\Core\Audit\AuditService::log(
-                action: 'BUDGETS_EXPIRATION_FAILED',
-                status: 'failed',
-                model_type: 'BudgetLine',
-                description: 'Failed to process expired budgets: ' . $e->getMessage(),
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'BUDGETS_EXPIRATION_FAILED',
+                'BudgetLine',
+                null,
+                null,
+                null,
+                'Failed to process expired budgets: ' . $e->getMessage(),
+                [
                     'error' => $e->getMessage(),
                 ]
             );
@@ -90,13 +94,14 @@ class InvalidateExpiredBudgetsJob implements ShouldQueue
         ]);
 
         // Audit log
-        \App\Core\Audit\AuditService::log(
-            action: 'BUDGET_CLOSED',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $budget->id,
-            description: "Budget line '{$budget->description}' closed for expired fiscal year",
-            metadata: [
+        app(\App\Core\Audit\AuditService::class)->log(
+            'BUDGET_CLOSED',
+            'BudgetLine',
+            $budget->id,
+            null,
+            null,
+            "Budget line '{$budget->description}' closed for expired fiscal year",
+            [
                 'budget_id' => $budget->id,
                 'department_id' => $budget->department_id,
                 'amount_allocated' => $budget->amount_allocated,

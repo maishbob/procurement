@@ -28,7 +28,7 @@ class RequisitionService
 
         if (isset($filters['search']) && $filters['search']) {
             $query->where('requisition_number', 'like', '%' . $filters['search'] . '%')
-                  ->orWhere('description', 'like', '%' . $filters['search'] . '%');
+                ->orWhere('description', 'like', '%' . $filters['search'] . '%');
         }
 
         return $query->paginate($perPage);
@@ -76,50 +76,52 @@ class RequisitionService
     {
         // Generate unique requisition number
         $data['requisition_number'] = $this->generateRequisitionNumber();
-        
+
         // Set user fields
         $data['requested_by'] = $user->id;
         $data['created_by'] = $user->id;
-        
-        // Set default status
-        $data['status'] = 'draft';
-        
+
+        // Set default status if not provided
+        if (!isset($data['status'])) {
+            $data['status'] = 'draft';
+        }
+
         // Use purpose as title if not provided
         if (!isset($data['title']) && isset($data['purpose'])) {
             $data['title'] = $data['purpose'];
         }
-        
+
         // Handle items data
         $items = $data['items'] ?? [];
         unset($data['items']);
-        
+
         // Calculate estimated total from items
         $estimatedTotal = 0;
         foreach ($items as $item) {
             $quantity = floatval($item['quantity'] ?? 0);
             $unitPrice = floatval($item['estimated_unit_price'] ?? 0);
             $itemTotal = $quantity * $unitPrice;
-            
+
             // Add VAT if applicable
             if (isset($item['is_vatable']) && $item['is_vatable']) {
                 $itemTotal *= 1.16; // 16% VAT
             }
-            
+
             $estimatedTotal += $itemTotal;
         }
-        
+
         $data['estimated_total'] = $estimatedTotal;
-        
+
         // Create requisition
         $requisition = Requisition::create($data);
-        
+
         // Create requisition items
         $lineNumber = 1;
         foreach ($items as $item) {
             $quantity = floatval($item['quantity']);
             $unitPrice = floatval($item['estimated_unit_price']);
             $estimatedTotal = $quantity * $unitPrice;
-            
+
             $requisition->items()->create([
                 'line_number' => $lineNumber++,
                 'description' => $item['description'],
@@ -132,7 +134,7 @@ class RequisitionService
                 'status' => 'pending',
             ]);
         }
-        
+
         return $requisition->fresh('items');
     }
 
@@ -144,12 +146,13 @@ class RequisitionService
         $prefix = 'REQ';
         $year = date('Y');
         $month = date('m');
-        
+
         // Get the last requisition number for this month
-        $lastRequisition = Requisition::where('requisition_number', 'like', "$prefix-$year$month-%")
+        $lastRequisition = Requisition::withTrashed()
+            ->where('requisition_number', 'like', "$prefix-$year$month-%")
             ->orderBy('requisition_number', 'desc')
             ->first();
-        
+
         if ($lastRequisition) {
             // Extract the sequence number and increment
             $lastNumber = intval(substr($lastRequisition->requisition_number, -4));
@@ -158,7 +161,7 @@ class RequisitionService
             // First requisition of the month
             $sequence = '0001';
         }
-        
+
         return "$prefix-$year$month-$sequence";
     }
 
@@ -171,41 +174,41 @@ class RequisitionService
         if (!isset($data['title']) && isset($data['purpose'])) {
             $data['title'] = $data['purpose'];
         }
-        
+
         // Handle items if provided
         if (isset($data['items'])) {
             $items = $data['items'];
             unset($data['items']);
-            
+
             // Calculate estimated total from items
             $estimatedTotal = 0;
             foreach ($items as $item) {
                 $quantity = floatval($item['quantity'] ?? 0);
                 $unitPrice = floatval($item['estimated_unit_price'] ?? 0);
                 $itemTotal = $quantity * $unitPrice;
-                
+
                 // Add VAT if applicable
                 if (isset($item['is_vatable']) && $item['is_vatable']) {
                     $itemTotal *= 1.16; // 16% VAT
                 }
-                
+
                 $estimatedTotal += $itemTotal;
             }
-            
+
             $data['estimated_total'] = $estimatedTotal;
-            
+
             // Update requisition
             $requisition->update($data);
-            
+
             // Delete existing items and recreate
             $requisition->items()->delete();
-            
+
             $lineNumber = 1;
             foreach ($items as $item) {
                 $quantity = floatval($item['quantity']);
                 $unitPrice = floatval($item['estimated_unit_price']);
                 $estimatedTotalPrice = $quantity * $unitPrice;
-                
+
                 $requisition->items()->create([
                     'line_number' => $lineNumber++,
                     'description' => $item['description'],
@@ -218,10 +221,10 @@ class RequisitionService
                     'status' => 'pending',
                 ]);
             }
-            
+
             return $requisition->fresh('items');
         }
-        
+
         // Just update requisition without items
         $requisition->update($data);
         return $requisition;

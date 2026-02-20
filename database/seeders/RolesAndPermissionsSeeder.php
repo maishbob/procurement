@@ -112,11 +112,21 @@ class RolesAndPermissionsSeeder extends Seeder
         ];
 
         foreach ($roles as $roleData) {
-            Role::create(array_merge($roleData, ['guard_name' => 'web']));
+            Role::firstOrCreate(
+                [
+                    'slug' => $roleData['slug'],
+                    'guard_name' => 'web',
+                ],
+                $roleData
+            );
         }
 
         // 2. Create Permissions
         $permissions = [
+            // Annual Procurement Plan (APP) permissions
+            ['name' => 'manage_annual_procurement_plans', 'description' => 'Manage Annual Procurement Plans', 'module' => 'planning'],
+            ['name' => 'review_annual_procurement_plans', 'description' => 'Review Annual Procurement Plans', 'module' => 'planning'],
+            ['name' => 'approve_annual_procurement_plans', 'description' => 'Approve Annual Procurement Plans', 'module' => 'planning'],
             // Requisition Permissions
             ['name' => 'requisitions.create', 'description' => 'Create requisitions', 'module' => 'requisitions'],
             ['name' => 'requisitions.view', 'description' => 'View requisitions', 'module' => 'requisitions'],
@@ -210,7 +220,13 @@ class RolesAndPermissionsSeeder extends Seeder
         ];
 
         foreach ($permissions as $permData) {
-            Permission::create(array_merge($permData, ['guard_name' => 'web']));
+            Permission::firstOrCreate(
+                [
+                    'name' => $permData['name'],
+                    'guard_name' => 'web',
+                ],
+                $permData
+            );
         }
 
         // 3. Assign Permissions to Roles

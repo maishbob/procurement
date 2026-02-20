@@ -29,7 +29,7 @@
         <div class="md:col-span-1">
             <div class="bg-white rounded-lg shadow p-6 text-center">
                 <div class="w-20 h-20 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white text-3xl font-bold mx-auto mb-4">
-                    {{ substr($user->name, 0, 1) }}
+                    {{ $user->initials }}
                 </div>
                 <h2 class="text-lg font-bold text-gray-900">{{ $user->name }}</h2>
                 <p class="text-gray-600">{{ $user->email }}</p>

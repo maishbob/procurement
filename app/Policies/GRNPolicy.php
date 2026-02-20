@@ -2,7 +2,7 @@
 
 namespace App\Policies;
 
-use App\Models\GoodsReceivedNote;
+use App\Modules\GRN\Models\GoodsReceivedNote;
 use App\Models\User;
 
 class GRNPolicy
@@ -21,7 +21,7 @@ class GRNPolicy
     public function view(User $user, GoodsReceivedNote $grn): bool
     {
         // Procurement, store, and finance can view all GRNs
-        if ($user->hasAnyRole(['procurement_officer', 'store_manager', 'finance_manager', 'admin', 'super_admin'])) {
+        if ($user->hasAnyRole(['Procurement Officer', 'Stores Manager', 'Finance Manager', 'admin', 'Super Administrator'])) {
             return true;
         }
 
@@ -38,7 +38,7 @@ class GRNPolicy
      */
     public function create(User $user): bool
     {
-        return $user->hasAnyRole(['store_manager', 'procurement_officer', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['Stores Manager', 'Procurement Officer', 'admin', 'Super Administrator'])
             && $user->hasPermission('grn.create');
     }
 
@@ -52,7 +52,7 @@ class GRNPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['store_manager', 'procurement_officer', 'admin', 'super_admin']);
+        return $user->hasAnyRole(['Stores Manager', 'Procurement Officer', 'admin', 'Super Administrator']);
     }
 
     /**
@@ -65,7 +65,7 @@ class GRNPolicy
         }
 
         // Only quality inspectors and above can record inspections
-        return $user->hasAnyRole(['quality_inspector', 'procurement_officer', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['Stores Manager', 'Procurement Officer', 'admin', 'Super Administrator'])
             && $user->hasPermission('grn.inspect');
     }
 
@@ -79,7 +79,7 @@ class GRNPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['store_manager', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['Stores Manager', 'admin', 'Super Administrator'])
             && $user->hasPermission('grn.post');
     }
 
@@ -88,7 +88,7 @@ class GRNPolicy
      */
     public function recordDiscrepancies(User $user, GoodsReceivedNote $grn): bool
     {
-        return $user->hasAnyRole(['store_manager', 'quality_inspector', 'procurement_officer', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['Stores Manager', 'Stores Manager', 'Procurement Officer', 'admin', 'Super Administrator'])
             && in_array($grn->status, ['pending_inspection', 'inspected', 'inspection_complete']);
     }
 
@@ -102,7 +102,7 @@ class GRNPolicy
             return false;
         }
 
-        return $user->hasRole('super_admin');
+        return $user->hasRole('Super Administrator');
     }
 
     /**
@@ -110,6 +110,6 @@ class GRNPolicy
      */
     public function viewDiscrepancies(User $user, GoodsReceivedNote $grn): bool
     {
-        return $user->hasAnyRole(['store_manager', 'quality_inspector', 'procurement_officer', 'finance_manager', 'admin', 'super_admin']);
+        return $user->hasAnyRole(['Stores Manager', 'Stores Manager', 'Procurement Officer', 'Finance Manager', 'admin', 'Super Administrator']);
     }
 }

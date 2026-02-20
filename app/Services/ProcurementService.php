@@ -3,17 +3,24 @@
 namespace App\Services;
 
 use App\Core\Audit\AuditService;
+use App\Core\Rules\GovernanceRules;
 use App\Core\Workflow\WorkflowEngine;
 use App\Models\ProcurementProcess;
 use App\Models\SupplierBid;
 use App\Models\BidEvaluation;
+use App\Models\ConflictOfInterestDeclaration;
+use App\Modules\Suppliers\Models\Supplier;
+use App\Modules\Suppliers\Services\SupplierService;
 use Carbon\Carbon;
+use Exception;
 
 class ProcurementService
 {
     public function __construct(
         private AuditService $auditService,
-        private WorkflowEngine $workflowEngine
+        private WorkflowEngine $workflowEngine,
+        private GovernanceRules $governanceRules,
+        private SupplierService $supplierService
     ) {}
 
     /**
@@ -21,6 +28,18 @@ class ProcurementService
      */
     public function createRFQ(array $data, $user = null): ProcurementProcess
     {
+        $amount = (float) ($data['budget_allocation'] ?? 0);
+        if ($amount > 0) {
+            $required = $this->governanceRules->getRequiredSourcingMethod($amount);
+            if (in_array($required, ['rfq_formal', 'tender'])) {
+                $band = $this->governanceRules->determineCashBand($amount);
+                throw new Exception(
+                    "This purchase value (KES " . number_format($amount, 2) . ") falls in the '{$band['label']}' band " .
+                    "and requires a {$required} — an RFQ is not permitted."
+                );
+            }
+        }
+
         $rfq = ProcurementProcess::create([
             'type' => 'rfq',
             'requisition_id' => $data['requisition_id'] ?? null,
@@ -33,15 +52,21 @@ class ProcurementService
             'created_by' => $user?->id ?? auth()->id(),
         ]);
 
-        // Add invited suppliers
-        if (!empty($data['invited_suppliers'])) {
-            $rfq->invitedSuppliers()->sync($data['invited_suppliers']);
-        } elseif (!empty($data['supplier_ids'])) {
-            $rfq->invitedSuppliers()->sync($data['supplier_ids']);
+        // Add invited suppliers (ASL enforcement)
+        $supplierIds = $data['invited_suppliers'] ?? $data['supplier_ids'] ?? [];
+        if (!empty($supplierIds)) {
+            $this->validateSupplierASL($supplierIds);
+            $now = now();
+            $pivotData = [];
+            foreach ($supplierIds as $sid) {
+                $pivotData[$sid] = ['invited_at' => $now];
+            }
+            $rfq->invitedSuppliers()->sync($pivotData);
         }
 
         try {
-            $this->workflowEngine->transition($rfq, 'ProcurementWorkflow', 'create_rfq');
+            // Initial state is 'draft', transition to 'rfq_issued' (example, adjust as needed)
+            $this->workflowEngine->transition($rfq, 'ProcurementWorkflow', 'draft', 'rfq_issued');
         } catch (\Exception $e) {
             // Workflow is optional, continue if it fails
             \Log::info('Workflow transition skipped: ' . $e->getMessage());
@@ -55,6 +80,18 @@ class ProcurementService
      */
     public function createRFP(array $data, $user = null): ProcurementProcess
     {
+        $amount = (float) ($data['budget_allocation'] ?? 0);
+        if ($amount > 0) {
+            $required = $this->governanceRules->getRequiredSourcingMethod($amount);
+            if ($required === 'tender') {
+                $band = $this->governanceRules->determineCashBand($amount);
+                throw new Exception(
+                    "This purchase value (KES " . number_format($amount, 2) . ") falls in the '{$band['label']}' band " .
+                    "and requires a formal tender — an RFP is not permitted."
+                );
+            }
+        }
+
         $rfp = ProcurementProcess::create([
             'type' => 'rfp',
             'requisition_id' => $data['requisition_id'] ?? null,
@@ -70,10 +107,10 @@ class ProcurementService
             'created_by' => $user?->id ?? auth()->id(),
         ]);
 
-        if (!empty($data['invited_suppliers'])) {
-            $rfp->invitedSuppliers()->sync($data['invited_suppliers']);
-        } elseif (!empty($data['supplier_ids'])) {
-            $rfp->invitedSuppliers()->sync($data['supplier_ids']);
+        $supplierIds = $data['invited_suppliers'] ?? $data['supplier_ids'] ?? [];
+        if (!empty($supplierIds)) {
+            $this->validateSupplierASL($supplierIds);
+            $rfp->invitedSuppliers()->sync($supplierIds);
         }
 
         try {
@@ -106,11 +143,11 @@ class ProcurementService
             'created_by' => $user?->id ?? auth()->id(),
         ]);
 
-        // Add invited suppliers
-        if (!empty($data['invited_suppliers'])) {
-            $tender->invitedSuppliers()->sync($data['invited_suppliers']);
-        } elseif (!empty($data['supplier_ids'])) {
-            $tender->invitedSuppliers()->sync($data['supplier_ids']);
+        // Add invited suppliers (ASL enforcement)
+        $supplierIds = $data['invited_suppliers'] ?? $data['supplier_ids'] ?? [];
+        if (!empty($supplierIds)) {
+            $this->validateSupplierASL($supplierIds);
+            $tender->invitedSuppliers()->sync($supplierIds);
         }
 
         try {
@@ -203,6 +240,24 @@ class ProcurementService
      */
     public function evaluateBids(ProcurementProcess $process, array $evaluationScores): void
     {
+        // Enforce Conflict of Interest check for evaluator
+        $evaluatorId = auth()->id();
+        $this->enforceConflictOfInterestCheck($process, $evaluatorId);
+
+        // Enforce minimum quote count per cash band
+        $amount = (float) ($process->budget_allocation ?? 0);
+        if ($amount > 0) {
+            $minQuotes = $this->governanceRules->getMinimumQuotes($amount);
+            $bidCount  = $process->bids()->count();
+            if ($minQuotes > 0 && $bidCount < $minQuotes) {
+                $band = $this->governanceRules->determineCashBand($amount);
+                throw new Exception(
+                    "Evaluation blocked — {$minQuotes} quote(s) required for the '{$band['label']}' band; " .
+                    "only {$bidCount} received."
+                );
+            }
+        }
+
         $bids = $process->bids()->get();
 
         foreach ($evaluationScores as $bidId => $scores) {
@@ -210,6 +265,14 @@ class ProcurementService
 
             if (!$bid) {
                 continue;
+            }
+
+            // Additional CoI check: ensure evaluator has no conflict with this specific supplier
+            if (ConflictOfInterestDeclaration::hasConflict($evaluatorId, get_class($bid->supplier), $bid->supplier_id)) {
+                throw new Exception(
+                    "Evaluation blocked: You have declared a conflict of interest with supplier '{$bid->supplier->name}'. " .
+                    "Please recuse yourself from this evaluation."
+                );
             }
 
             // Calculate weighted score
@@ -427,6 +490,69 @@ class ProcurementService
             model_type: 'ProcurementProcess',
             model_id: $process->id,
             description: "Award criteria: {$awardCriteria}",
+        );
+    }
+
+    /**
+     * Validate that all invited supplier IDs are on the Approved Supplier List.
+     * Throws Exception listing any non-approved supplier names.
+     */
+    protected function validateSupplierASL(array $supplierIds): void
+    {
+        $blocked = Supplier::whereIn('id', $supplierIds)
+            ->where('asl_status', '!=', 'approved')
+            ->get();
+
+        if ($blocked->isNotEmpty()) {
+            $names = $blocked->map(fn($s) => $s->display_name ?? $s->business_name)->implode(', ');
+            throw new Exception(
+                "The following supplier(s) are not on the Approved Supplier List and cannot be invited: {$names}."
+            );
+        }
+    }
+
+    /**
+     * Enforce Conflict of Interest check for procurement process evaluator
+     * 
+     * @throws Exception if evaluator has declared conflict of interest
+     */
+    protected function enforceConflictOfInterestCheck(ProcurementProcess $process, int $evaluatorId): void
+    {
+        $coiEnabled = config('procurement.governance.conflict_of_interest.enforce', true);
+        
+        if (!$coiEnabled) {
+            return;
+        }
+
+        // Check if evaluator has declared conflict with the procurement process
+        if (ConflictOfInterestDeclaration::hasConflict($evaluatorId, get_class($process), $process->id)) {
+            throw new Exception(
+                "Evaluation blocked: You have declared a conflict of interest with this procurement process. " .
+                "Please recuse yourself from participating in this evaluation. " .
+                "Contact your supervisor if you believe this is in error."
+            );
+        }
+
+        // Check if evaluator has conflicts with any participating suppliers
+        $supplierIds = $process->bids()->pluck('supplier_id')->toArray();
+        
+        foreach ($supplierIds as $supplierId) {
+            if (ConflictOfInterestDeclaration::hasConflict($evaluatorId, 'App\\Modules\\Finance\\Models\\Supplier', $supplierId)) {
+                $supplier = \App\Modules\Finance\Models\Supplier::find($supplierId);
+                throw new Exception(
+                    "Evaluation blocked: You have declared a conflict of interest with supplier '{$supplier->name}' " .
+                    "who has submitted a bid for this procurement. You must recuse yourself from this evaluation."
+                );
+            }
+        }
+
+        // Log CoI check
+        $this->auditService->log(
+            action: 'COI_CHECK_PERFORMED',
+            status: 'success',
+            model_type: 'ProcurementProcess',
+            model_id: $process->id,
+            description: "Conflict of interest check passed for evaluator ID {$evaluatorId}",
         );
     }
 }

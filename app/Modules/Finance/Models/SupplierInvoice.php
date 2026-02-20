@@ -14,6 +14,24 @@ class SupplierInvoice extends Model
 {
     use HasFactory, SoftDeletes;
 
+    /**
+     * Tell Laravel where to find the factory for this model.
+     */
+    protected static function newFactory()
+    {
+        return \Database\Factories\Modules\Finance\Models\SupplierInvoiceFactory::new();
+    }
+    use HasFactory, SoftDeletes;
+
+    /**
+     * Alias for GRN relationship for legacy/test compatibility
+     */
+    public function goodsReceivedNote(): BelongsTo
+    {
+        return $this->grn();
+    }
+    use HasFactory, SoftDeletes;
+
     protected $fillable = [
         'invoice_number',
         'supplier_invoice_number',

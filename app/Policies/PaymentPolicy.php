@@ -21,7 +21,7 @@ class PaymentPolicy
     public function view(User $user, Payment $payment): bool
     {
         // Finance, procurement, and admin can view all payments
-        if ($user->hasAnyRole(['finance_manager', 'procurement_officer', 'admin', 'super_admin'])) {
+        if ($user->hasAnyRole(['Finance Manager', 'Procurement Officer', 'Super Administrator', 'Super Administrator'])) {
             return true;
         }
 
@@ -31,9 +31,14 @@ class PaymentPolicy
     /**
      * Determine if the user can create a payment (draft)
      */
+    /**
+     * Role/permission check only — the full PO + GRN + acceptance chain guard
+     * is enforced in PaymentService::validatePaymentChain(), which throws a
+     * descriptive Exception when the chain is broken.
+     */
     public function create(User $user): bool
     {
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['Finance Manager', 'Accountant', 'Super Administrator', 'Super Administrator'])
             && $user->hasPermission('payments.create');
     }
 
@@ -47,7 +52,7 @@ class PaymentPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin']);
+        return $user->hasAnyRole(['Finance Manager', 'Super Administrator', 'Super Administrator']);
     }
 
     /**
@@ -59,7 +64,7 @@ class PaymentPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin']);
+        return $user->hasAnyRole(['Finance Manager', 'Super Administrator', 'Super Administrator']);
     }
 
     /**
@@ -79,11 +84,11 @@ class PaymentPolicy
 
         // Check approval authority (based on payment amount and user's approval limit)
         $userApprovalLimit = $user->approval_limit ?? 0;
-        if ($payment->total_amount > $userApprovalLimit && !$user->hasRole('super_admin')) {
+        if ($payment->total_amount > $userApprovalLimit && !$user->hasRole('Super Administrator')) {
             return false;
         }
 
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['Finance Manager', 'Super Administrator', 'Super Administrator'])
             && $user->hasPermission('payments.approve');
     }
 
@@ -102,7 +107,7 @@ class PaymentPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin']);
+        return $user->hasAnyRole(['Finance Manager', 'Super Administrator', 'Super Administrator']);
     }
 
     /**
@@ -120,7 +125,7 @@ class PaymentPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['Finance Manager', 'Super Administrator', 'Super Administrator'])
             && $user->hasPermission('payments.process');
     }
 
@@ -133,7 +138,7 @@ class PaymentPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin']);
+        return $user->hasAnyRole(['Finance Manager', 'Super Administrator', 'Super Administrator']);
     }
 
     /**
@@ -146,7 +151,7 @@ class PaymentPolicy
             return false;
         }
 
-        return $user->hasRole('super_admin');
+        return $user->hasRole('Super Administrator');
     }
 
     /**
@@ -154,7 +159,7 @@ class PaymentPolicy
      */
     public function viewWHTCertificate(User $user, Payment $payment): bool
     {
-        return $user->hasAnyRole(['finance_manager', 'procurement_officer', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['Finance Manager', 'Procurement Officer', 'Super Administrator', 'Super Administrator'])
             && $payment->has_wht;
     }
 
@@ -171,7 +176,7 @@ class PaymentPolicy
      */
     public function viewReconciliation(User $user, Payment $payment): bool
     {
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin']);
+        return $user->hasAnyRole(['Finance Manager', 'Super Administrator', 'Super Administrator']);
     }
 
     /**

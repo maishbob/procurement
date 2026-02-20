@@ -4,67 +4,56 @@ namespace App\Listeners;
 
 use App\Events\BudgetThresholdExceededEvent;
 use App\Jobs\SendEmailNotificationJob;
+use App\Models\User;
 use App\Notifications\BudgetThresholdExceededNotification;
 
 class NotifyBudgetOwnerListener
 {
-    /**
-     * Handle the event.
-     */
     public function handle(BudgetThresholdExceededEvent $event): void
     {
         $budgetLine = $event->budgetLine;
         $department = $budgetLine->department;
 
-        if (!$department) {
-            return;
+        // Find Budget Owner or HOD for this department
+        $budgetOwnerQuery = User::active()
+            ->whereHas('roles', fn ($q) => $q->whereIn('name', ['Budget Owner', 'Head of Department']));
+
+        if ($department) {
+            $budgetOwner = $budgetOwnerQuery->where('department_id', $department->id)->first();
         }
 
-        // Find budget owner/department head
-        $budgetOwner = \App\Models\User::where('department_id', $department->id)
-            ->whereHas('roles', function ($query) {
-                $query->whereIn('name', ['department_head', 'budget_owner', 'manager']);
-            })
-            ->first();
-
-        if (!$budgetOwner) {
-            return;
+        // If no department-specific owner, pick any Budget Owner
+        if (empty($budgetOwner)) {
+            $budgetOwner = $budgetOwnerQuery->first();
         }
 
-        // Send alert notification
-        dispatch(new SendEmailNotificationJob(
-            $budgetOwner,
-            new BudgetThresholdExceededNotification($budgetLine, $event->percentageUsed, $event->threshold)
-        ));
+        $notification = new BudgetThresholdExceededNotification($budgetLine, $event->percentageUsed, $event->threshold);
 
-        // Also notify finance team
-        $financeUsers = \App\Models\User::whereHas('roles', function ($query) {
-            $query->whereIn('name', ['finance', 'finance_manager']);
-        })->get();
-
-        foreach ($financeUsers as $user) {
-            dispatch(new SendEmailNotificationJob(
-                $user,
-                new BudgetThresholdExceededNotification($budgetLine, $event->percentageUsed, $event->threshold)
-            ));
+        if ($budgetOwner) {
+            dispatch(new SendEmailNotificationJob($budgetOwner, $notification));
         }
 
-        // Audit log
-        \App\Core\Audit\AuditService::log(
+        // Also notify Finance Manager and Principal so they have visibility
+        $financeAndPrincipal = User::active()
+            ->whereHas('roles', fn ($q) => $q->whereIn('name', ['Finance Manager', 'Principal', 'Super Administrator']))
+            ->get();
+
+        foreach ($financeAndPrincipal as $user) {
+            if (!$budgetOwner || $user->id !== $budgetOwner->id) {
+                dispatch(new SendEmailNotificationJob($user, $notification));
+            }
+        }
+
+        app(\App\Core\Audit\AuditService::class)->log(
             action: 'BUDGET_THRESHOLD_ALERT_SENT',
-            status: 'success',
-            model_type: 'BudgetLine',
-            model_id: $budgetLine->id,
-            description: "Budget threshold alert sent to {$budgetOwner->name}",
+            model: 'BudgetLine',
+            modelId: $budgetLine->id,
             metadata: [
-                'budget_id' => $budgetLine->id,
-                'percentage_used' => round($event->percentageUsed, 2),
-                'threshold' => $event->threshold,
-                'recipients' => [
-                    'budget_owner' => $budgetOwner->email,
-                    'finance_count' => $financeUsers->count(),
-                ]
-            ]
+                'percentage_used'     => round($event->percentageUsed, 2),
+                'threshold'           => $event->threshold,
+                'budget_owner_email'  => $budgetOwner?->email,
+                'finance_notified'    => $financeAndPrincipal->count(),
+            ],
         );
     }
 }

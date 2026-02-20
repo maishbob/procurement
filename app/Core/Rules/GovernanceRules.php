@@ -3,7 +3,7 @@
 namespace App\Core\Rules;
 
 use App\Core\Audit\AuditService;
-use Illuminate\Support\Facades\Auth;
+use App\Models\BudgetLine;
 use Exception;
 
 /**
@@ -150,6 +150,54 @@ class GovernanceRules
         ];
     }
 
+    // -------------------------------------------------------------------------
+    // Cash Band System (5-tier, PPADA-aligned)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Determine the cash band for a given amount.
+     * Returns the full band config array (label, min, max, method, min_quotes, approvers).
+     */
+    public function determineCashBand(float $amount): array
+    {
+        $bands = config('procurement.cash_bands', []);
+
+        foreach ($bands as $key => $band) {
+            if ($band['max'] === null || $amount <= $band['max']) {
+                return array_merge(['key' => $key], $band);
+            }
+        }
+
+        // Fallback to strategic if nothing matched
+        $strategic = $bands['strategic'];
+        return array_merge(['key' => 'strategic'], $strategic);
+    }
+
+    /**
+     * Return the required sourcing method for the given amount.
+     * Values: spot_buy | rfq | rfq_formal | tender
+     */
+    public function getRequiredSourcingMethod(float $amount): string
+    {
+        return $this->determineCashBand($amount)['method'];
+    }
+
+    /**
+     * Return the minimum number of quotes/bids required for the given amount.
+     */
+    public function getMinimumQuotes(float $amount): int
+    {
+        return (int) $this->determineCashBand($amount)['min_quotes'];
+    }
+
+    /**
+     * Return the required approver roles for the given amount.
+     */
+    public function getRequiredApprovers(float $amount): array
+    {
+        return $this->determineCashBand($amount)['approvers'];
+    }
+
     /**
      * Determine required approval level based on amount
      */
@@ -198,22 +246,55 @@ class GovernanceRules
     }
 
     /**
-     * Validate budget availability
+     * Validate budget availability against the real BudgetLine table.
+     *
+     * Returns:
+     *   'available'        — false only when no matching BudgetLine exists
+     *   'sufficient'       — whether available_balance >= requested amount
+     *   'available_balance'— allocated − committed − spent
      */
     public function validateBudgetAvailability(string $budgetCode, float $amount, string $fiscalYear): array
     {
-        // This would query the budget table to check available funds
-        // For now, returning structure
+        $budgetLine = BudgetLine::where('budget_code', $budgetCode)
+            ->where('fiscal_year', $fiscalYear)
+            ->where('is_active', true)
+            ->first();
+
+        if (!$budgetLine) {
+            return [
+                'available'        => false,
+                'budget_code'      => $budgetCode,
+                'fiscal_year'      => $fiscalYear,
+                'allocated'        => 0,
+                'committed'        => 0,
+                'spent'            => 0,
+                'available_balance'=> 0,
+                'requested_amount' => $amount,
+                'sufficient'       => false,
+                'error'            => "No active budget line found for code '{$budgetCode}' in fiscal year '{$fiscalYear}'",
+            ];
+        }
+
+        $allocated        = (float) $budgetLine->allocated_amount;
+        $committed        = (float) $budgetLine->committed_amount;
+        $spent            = (float) $budgetLine->spent_amount;
+        $availableBalance = $allocated - $committed - $spent;
+
+        $overrunAllowed = config('procurement.budget.overrun_allowed', false);
+        $sufficient     = $overrunAllowed
+            ? true
+            : $availableBalance >= $amount;
+
         return [
-            'available' => true,
-            'budget_code' => $budgetCode,
-            'fiscal_year' => $fiscalYear,
-            'allocated' => 1000000,
-            'committed' => 300000,
-            'spent' => 200000,
-            'available_balance' => 500000,
+            'available'        => true,
+            'budget_code'      => $budgetCode,
+            'fiscal_year'      => $fiscalYear,
+            'allocated'        => $allocated,
+            'committed'        => $committed,
+            'spent'            => $spent,
+            'available_balance'=> $availableBalance,
             'requested_amount' => $amount,
-            'sufficient' => true,
+            'sufficient'       => $sufficient,
         ];
     }
 

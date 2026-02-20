@@ -48,7 +48,8 @@ class RequisitionController extends Controller
             ->where('available_amount', '>', 0)
             ->get();
 
-        return view('requisitions.create', compact('departments', 'categories', 'suppliers', 'budgetLines'));
+        // Use simple form layout
+        return view('requisitions.create-simple', compact('departments', 'categories', 'suppliers', 'budgetLines'));
     }
 
     /**
@@ -60,28 +61,85 @@ class RequisitionController extends Controller
 
         $validated = $request->validate([
             'department_id' => 'required|exists:departments,id',
-            'purpose' => 'required|string|min:10',
+            'title' => 'required|string|min:3',
             'justification' => 'required|string|min:10',
-            'required_by_date' => 'required|date|after:today',
+            'required_by_date' => 'required|date',
             'priority' => 'required|in:low,normal,high,urgent',
             'currency' => 'required|in:KES,USD,GBP,EUR',
+            'estimated_total' => 'required|numeric|min:0.01',
             'budget_line_id' => 'nullable|exists:budget_lines,id',
-            'is_emergency' => 'nullable|boolean',
-            'is_single_source' => 'nullable|boolean',
-            'items' => 'required|array|min:1',
-            'items.*.description' => 'required|string',
-            'items.*.specifications' => 'nullable|string',
-            'items.*.quantity' => 'required|numeric|min:1',
-            'items.*.unit_of_measure' => 'required|string',
-            'items.*.estimated_unit_price' => 'required|numeric|min:0.01',
-            'items.*.is_vatable' => 'nullable|boolean',
+            'status' => 'nullable|in:draft,submitted',
+            'supporting_documents.*' => 'nullable|file|max:5120|mimes:pdf,jpg,jpeg,png,doc,docx',
         ]);
 
+        // Budget validation
+        if ($request->filled('budget_line_id')) {
+            $budgetLine = \App\Models\BudgetLine::find($validated['budget_line_id']);
+
+            if ($budgetLine) {
+                // Check if budget is approved
+                if ($budgetLine->status !== 'approved') {
+                    return back()->withInput()->with('warning', 'Selected budget is not approved yet. Requisition created as draft.');
+                }
+
+                // Check budget availability
+                $availableAmount = $budgetLine->allocated_amount - $budgetLine->committed_amount - $budgetLine->spent_amount;
+
+                if ($validated['estimated_total'] > $availableAmount) {
+                    // Log budget warning but allow to proceed
+                    \Log::warning('Requisition exceeds available budget', [
+                        'budget_line_id' => $budgetLine->id,
+                        'available' => $availableAmount,
+                        'requested' => $validated['estimated_total'],
+                        'user_id' => auth()->id(),
+                    ]);
+                }
+            }
+        }
+
         try {
-            $requisition = $this->requisitionService->createRequisition(
-                $validated,
-                auth()->user()
-            );
+            // Handle file uploads
+            $uploadedFiles = [];
+            if ($request->hasFile('supporting_documents')) {
+                foreach ($request->file('supporting_documents') as $file) {
+                    if ($file && $file->isValid()) {
+                        $path = $file->store('requisitions/documents', 'public');
+                        $uploadedFiles[] = [
+                            'name' => $file->getClientOriginalName(),
+                            'path' => $path,
+                            'size' => $file->getSize(),
+                            'mime_type' => $file->getMimeType(),
+                        ];
+                    }
+                }
+            }
+
+            // Prepare data for requisition service
+            $data = [
+                'department_id' => $validated['department_id'],
+                'title' => $validated['title'],
+                'description' => $validated['title'],
+                'justification' => $validated['justification'],
+                'required_by_date' => $validated['required_by_date'],
+                'priority' => $validated['priority'],
+                'currency' => $validated['currency'],
+                'estimated_total' => $validated['estimated_total'],
+                'budget_line_id' => $validated['budget_line_id'] ?? null,
+                'type' => 'services',
+                'delivery_location' => 'School Campus',
+                'supporting_documents' => $uploadedFiles,
+                'status' => $request->input('status', 'draft'),
+                'items' => [[
+                    'description' => $validated['title'],
+                    'specifications' => $validated['justification'],
+                    'quantity' => 1,
+                    'unit_of_measure' => 'Service',
+                    'estimated_unit_price' => $validated['estimated_total'],
+                    'is_vatable' => false,
+                ]],
+            ];
+
+            $requisition = $this->requisitionService->createRequisition($data, auth()->user());
 
             return redirect()->route('requisitions.show', $requisition)
                 ->with('success', 'Requisition created successfully');

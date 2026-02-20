@@ -54,24 +54,28 @@ class UpdateExchangeRatesJob implements ShouldQueue
             }
 
             // Log successful update
-            \App\Core\Audit\AuditService::log(
-                action: 'EXCHANGE_RATES_UPDATED',
-                status: 'success',
-                model_type: 'ExchangeRate',
-                description: 'Exchange rates updated from ' . $provider,
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'EXCHANGE_RATES_UPDATED',
+                'ExchangeRate',
+                null,
+                null,
+                null,
+                'Exchange rates updated from ' . $provider,
+                [
                     'provider' => $provider,
                     'rates_updated' => count($rates),
                     'currencies' => array_keys($rates),
                 ]
             );
         } catch (\Exception $e) {
-            \App\Core\Audit\AuditService::log(
-                action: 'EXCHANGE_RATES_UPDATE_FAILED',
-                status: 'failed',
-                model_type: 'ExchangeRate',
-                description: 'Failed to update exchange rates: ' . $e->getMessage(),
-                metadata: [
+            app(\App\Core\Audit\AuditService::class)->log(
+                'EXCHANGE_RATES_UPDATE_FAILED',
+                'ExchangeRate',
+                null,
+                null,
+                null,
+                'Failed to update exchange rates: ' . $e->getMessage(),
+                [
                     'provider' => $provider ?? 'unknown',
                     'error' => $e->getMessage(),
                 ]

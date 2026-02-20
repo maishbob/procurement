@@ -272,16 +272,28 @@ class PurchaseOrderController extends Controller
         ]);
 
         try {
-            // Generate PDF inline
             $items = $purchaseOrder->items()->get();
             $supplier = $purchaseOrder->supplier;
 
             $pdf = Pdf::loadView('purchase-orders.pdf', compact('purchaseOrder', 'items', 'supplier'));
+            $pdfContent = $pdf->output();
 
-            // Send email (implement your mail logic here)
-            // Mail::send(new SendPurchaseOrderMail($purchaseOrder, $validated['email'], $pdf));
+            Mail::send([], [], function ($message) use ($validated, $pdfContent, $purchaseOrder) {
+                $message->to($validated['email'])
+                    ->subject($validated['subject'])
+                    ->setBody($validated['message'], 'text/plain')
+                    ->attachData($pdfContent, "PO-{$purchaseOrder->po_number}.pdf", [
+                        'mime' => 'application/pdf',
+                    ]);
+            });
 
-            return back()->with('success', 'Purchase Order sent to supplier');
+            \Log::info('PO email sent', [
+                'po_number' => $purchaseOrder->po_number,
+                'to'        => $validated['email'],
+                'sent_by'   => auth()->id(),
+            ]);
+
+            return back()->with('success', 'Purchase Order sent to supplier successfully');
         } catch (\Exception $e) {
             return back()->with('error', 'Failed to send PO: ' . $e->getMessage());
         }
@@ -293,8 +305,19 @@ class PurchaseOrderController extends Controller
     public function getItems(PurchaseOrder $purchaseOrder)
     {
         $items = $purchaseOrder->items()
-            ->select('id', 'item_id', 'quantity', 'unit_price', 'description')
-            ->get();
+            ->with(['requisitionItem'])
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'id' => $item->id, // This is the PO Item ID
+                    'item_id' => $item->requisitionItem->catalog_item_id, // This is the Catalog Item ID
+                    'description' => $item->description,
+                    'po_quantity' => $item->quantity,
+                    'received_quantity' => $item->quantity_received,
+                    'unit_price' => $item->unit_price,
+                    // 'remaining_quantity' => $item->quantity - $item->quantity_received
+                ];
+            });
 
         return response()->json($items);
     }

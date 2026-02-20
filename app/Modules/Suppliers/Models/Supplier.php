@@ -4,7 +4,6 @@ namespace App\Modules\Suppliers\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Carbon\Carbon;
@@ -54,6 +53,13 @@ class Supplier extends Model
         'blacklisted_at',
         'blacklisted_by',
         'notes',
+        // ASL fields
+        'asl_status',
+        'asl_approved_at',
+        'asl_approved_by',
+        'asl_review_due_at',
+        'asl_categories',
+        'onboarding_status',
     ];
 
     protected $casts = [
@@ -69,19 +75,18 @@ class Supplier extends Model
         'is_blacklisted' => 'boolean',
         'blacklisted_at' => 'datetime',
         'deleted_at' => 'datetime',
+        // ASL
+        'asl_approved_at' => 'datetime',
+        'asl_review_due_at' => 'date',
+        'asl_categories' => 'array',
     ];
 
     /**
      * Relationships
      */
-    public function categories(): BelongsToMany
+    public function categories(): HasMany
     {
-        return $this->belongsToMany(
-            SupplierCategory::class,
-            'supplier_category_mappings',
-            'supplier_id',
-            'category_id'
-        );
+        return $this->hasMany(SupplierCategory::class);
     }
 
     public function contacts(): HasMany

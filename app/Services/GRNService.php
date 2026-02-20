@@ -4,17 +4,55 @@ namespace App\Services;
 
 use App\Core\Audit\AuditService;
 use App\Core\Workflow\WorkflowEngine;
-use App\Models\GoodsReceivedNote;
-use App\Models\GRNItem;
-use App\Models\InventoryItem;
-use App\Models\PurchaseOrder;
+use App\Modules\GRN\Models\GoodsReceivedNote;
+use App\Modules\GRN\Models\GRNItem;
+use App\Modules\Inventory\Models\InventoryItem;
+use App\Modules\PurchaseOrders\Models\PurchaseOrder;
+use App\Modules\Quality\Services\CapaService;
 
 class GRNService
 {
     public function __construct(
         private AuditService $auditService,
-        private WorkflowEngine $workflowEngine
+        private WorkflowEngine $workflowEngine,
+        private CapaService $capaService
     ) {}
+
+    /**
+     * Get all GRNs with filters and pagination
+     */
+    public function getAllGRNs(array $filters = [], int $perPage = 15)
+    {
+        $query = GoodsReceivedNote::with(['supplier', 'purchaseOrder']);
+
+        if (!empty($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        if (!empty($filters['supplier_id'])) {
+            $query->where('supplier_id', $filters['supplier_id']);
+        }
+
+        if (!empty($filters['date_from'])) {
+            $query->whereDate('created_at', '>=', $filters['date_from']);
+        }
+
+        if (!empty($filters['date_to'])) {
+            $query->whereDate('created_at', '<=', $filters['date_to']);
+        }
+
+        if (!empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('grn_number', 'like', "%{$search}%")
+                  ->orWhereHas('supplier', function ($sq) use ($search) {
+                      $sq->where('name', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        return $query->latest()->paginate($perPage);
+    }
 
     /**
      * Create a GRN (Goods Received Note) for a purchase order
@@ -46,6 +84,38 @@ class GRNService
         }
 
         // Status is set to 'created' by default in the GoodsReceivedNote model
+        return $grn->fresh();
+    }
+
+    /**
+     * Update a pending GRN
+     */
+    public function updateGRN(GoodsReceivedNote $grn, array $data): GoodsReceivedNote
+    {
+        if ($grn->status !== 'received' && $grn->status !== 'pending') {
+             // 'received' is the initial status set in createGRN
+             // Assuming 'pending' might be used elsewhere or in future
+        }
+
+        // Update items
+        if (isset($data['items'])) {
+            foreach ($data['items'] as $itemId => $itemData) {
+                $item = $grn->items()->where('id', $itemId)->first(); // Use where id to ensure it belongs to GRN
+                 if ($item) {
+                    $item->update([
+                        'quantity_received' => $itemData['quantity_received'] ?? $item->quantity_received,
+                        'quantity_accepted' => $itemData['quantity_accepted'] ?? $item->quantity_accepted,
+                        'quantity_rejected' => $itemData['quantity_rejected'] ?? $item->quantity_rejected,
+                        'condition' => $itemData['condition'] ?? $item->condition,
+                    ]);
+                }
+            }
+        }
+
+        if (isset($data['notes'])) {
+            $grn->update(['notes' => $data['notes']]);
+        }
+
         return $grn->fresh();
     }
 
@@ -119,13 +189,17 @@ class GRNService
                 // Add received quantity to inventory
                 $inventoryItem->increment('quantity', $grnItem->quantity_received);
 
-                // Record transaction
+                // Record transaction — include tracking fields if captured at receipt
                 $inventoryItem->transactions()->create([
-                    'type' => 'in',
-                    'quantity' => $grnItem->quantity_received,
+                    'type'           => 'in',
+                    'quantity'       => $grnItem->quantity_received,
                     'reference_type' => 'GoodsReceivedNote',
-                    'reference_id' => $grn->id,
-                    'notes' => "Received from {$grn->supplier->name} via GRN #{$grn->grn_number}",
+                    'reference_id'   => $grn->id,
+                    'serial_number'  => $grnItem->serial_number,
+                    'batch_number'   => $grnItem->batch_number,
+                    'expiry_date'    => $grnItem->expiry_date,
+                    'storage_location' => $grnItem->storage_location,
+                    'notes'          => "Received from {$grn->supplier->name} via GRN #{$grn->grn_number}",
                 ]);
             }
         }
@@ -203,6 +277,26 @@ class GRNService
         $sequence = $latestGRN ? (int)substr($latestGRN->grn_number, -4) + 1 : 1;
 
         return sprintf('GRN-%d-%s-%04d', $year, $month, $sequence);
+    }
+
+    /**
+     * Record an inspection failure and auto-trigger a CAPA.
+     * Called when GRN items fail quality inspection.
+     */
+    public function recordInspectionFailure(GoodsReceivedNote $grn, array $data = []): void
+    {
+        $this->capaService->createFromVariance(
+            $grn,
+            'GoodsReceivedNote',
+            array_merge([
+                'title'             => "Inspection failure on GRN #{$grn->grn_number}",
+                'problem_statement' => $data['problem_statement'] ?? "Quality inspection failed for GRN #{$grn->grn_number}",
+                'proposed_action'   => $data['proposed_action'] ?? 'Investigate root cause and initiate corrective action with supplier.',
+                'priority'          => 'high',
+                'type'              => 'corrective',
+                'source'            => 'non_conformance',
+            ], $data)
+        );
     }
 
     /**

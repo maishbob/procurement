@@ -94,7 +94,7 @@
                                 </div>
                                 <div>
                                     <dt class="text-sm font-medium text-gray-500">Requested By</dt>
-                                    <dd class="mt-1 text-sm text-gray-900">{{ $requisition->requester->full_name }}</dd>
+                                    <dd class="mt-1 text-sm text-gray-900">{{ $requisition->requester?->name ?? 'N/A' }}</dd>
                                 </div>
                                 <div>
                                     <dt class="text-sm font-medium text-gray-500">Required By Date</dt>
@@ -105,8 +105,8 @@
                                     <dd class="mt-1 text-sm text-gray-900">{{ $requisition->currency }}</dd>
                                 </div>
                                 <div class="sm:col-span-2">
-                                    <dt class="text-sm font-medium text-gray-500">Purpose</dt>
-                                    <dd class="mt-1 text-sm text-gray-900">{{ $requisition->purpose }}</dd>
+                                    <dt class="text-sm font-medium text-gray-500">Subject/Purpose</dt>
+                                    <dd class="mt-1 text-sm text-gray-900">{{ $requisition->title ?? $requisition->purpose ?? 'N/A' }}</dd>
                                 </div>
                                 <div class="sm:col-span-2">
                                     <dt class="text-sm font-medium text-gray-500">Justification</dt>
@@ -116,7 +116,7 @@
                                 <div class="sm:col-span-2">
                                     <dt class="text-sm font-medium text-gray-500">Budget Line</dt>
                                     <dd class="mt-1 text-sm text-gray-900">
-                                        {{ $requisition->budgetLine->code }} - {{ $requisition->budgetLine->name }}
+                                        {{ $requisition->budgetLine?->budget_code ?? 'N/A' }} - {{ $requisition->budgetLine?->description ?? 'N/A' }}
                                     </dd>
                                 </div>
                                 @endif
@@ -218,6 +218,36 @@
                             </ul>
                         </div>
                     </div>
+
+                    <!-- Supporting Documents -->
+                    @if($requisition->supporting_documents && count($requisition->supporting_documents) > 0)
+                    <div class="rounded-lg bg-white shadow overflow-hidden">
+                        <div class="border-b border-gray-200 px-6 py-4">
+                            <h3 class="text-lg font-medium text-gray-900">Supporting Documents</h3>
+                        </div>
+                        <div class="px-6 py-5">
+                            <ul class="space-y-3">
+                                @foreach($requisition->supporting_documents as $doc)
+                                <li class="flex items-center justify-between py-2">
+                                    <div class="flex items-center min-w-0 flex-1">
+                                        <svg class="h-5 w-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                        </svg>
+                                        <span class="ml-2 text-sm text-gray-700 truncate">{{ $doc['name'] }}</span>
+                                    </div>
+                                    <a href="{{ asset('storage/' . $doc['path']) }}" 
+                                       target="_blank"
+                                       class="ml-3 flex-shrink-0 text-primary-600 hover:text-primary-900">
+                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                    </a>
+                                </li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    </div>
+                    @endif
                 </div>
             </div>
         </div>

@@ -1,0 +1,1 @@
+// DEPRECATED: This file is intentionally disabled to prevent service container conflicts with the Planning module's AnnualProcurementPlanService.

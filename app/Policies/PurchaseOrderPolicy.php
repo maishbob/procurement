@@ -21,17 +21,17 @@ class PurchaseOrderPolicy
     public function view(User $user, PurchaseOrder $po): bool
     {
         // Procurement, finance, and admin can view all POs
-        if ($user->hasAnyRole(['procurement_officer', 'finance_manager', 'admin', 'super_admin'])) {
+        if ($user->hasAnyRole(['Procurement Officer', 'Finance Manager', 'Super Administrator', 'Super Administrator'])) {
             return true;
         }
 
         // Requisitioners can view POs they created
-        if ($user->hasRole('requisitioner') && $po->requester_id === $user->id) {
+        if ($user->hasRole('Department Staff') && $po->requester_id === $user->id) {
             return true;
         }
 
         // Store managers can view POs
-        if ($user->hasRole('store_manager')) {
+        if ($user->hasRole('Stores Manager')) {
             return true;
         }
 
@@ -43,7 +43,11 @@ class PurchaseOrderPolicy
      */
     public function create(User $user): bool
     {
-        return $user->hasAnyRole(['procurement_officer', 'admin', 'super_admin'])
+        if ($user->hasAnyRole(['Super Administrator', 'Super Administrator'])) {
+            return true;
+        }
+
+        return $user->hasRole('Procurement Officer')
             && $user->hasPermission('purchase-orders.create');
     }
 
@@ -57,7 +61,7 @@ class PurchaseOrderPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['procurement_officer', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['Procurement Officer', 'Super Administrator', 'Super Administrator'])
             && $user->hasPermission('purchase-orders.edit');
     }
 
@@ -73,11 +77,11 @@ class PurchaseOrderPolicy
 
         // Check approval authority (based on PO amount and user's approval limit)
         $userApprovalLimit = $user->approval_limit ?? 0;
-        if ($po->total_amount > $userApprovalLimit && !$user->hasAnyRole(['admin', 'super_admin'])) {
+        if ($po->total_amount > $userApprovalLimit && !$user->hasAnyRole(['Super Administrator', 'Super Administrator'])) {
             return false;
         }
 
-        return $user->hasAnyRole(['procurement_officer', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['Procurement Officer', 'Super Administrator', 'Super Administrator'])
             && $user->hasPermission('purchase-orders.issue');
     }
 
@@ -93,11 +97,11 @@ class PurchaseOrderPolicy
 
         // Check approval authority
         $userApprovalLimit = $user->approval_limit ?? 0;
-        if ($po->total_amount > $userApprovalLimit && !$user->hasAnyRole(['admin', 'super_admin'])) {
+        if ($po->total_amount > $userApprovalLimit && !$user->hasAnyRole(['Super Administrator', 'Super Administrator'])) {
             return false;
         }
 
-        return $user->hasAnyRole(['procurement_officer', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['Procurement Officer', 'Super Administrator', 'Super Administrator'])
             && $user->hasPermission('purchase-orders.cancel');
     }
 
@@ -111,7 +115,7 @@ class PurchaseOrderPolicy
             return false;
         }
 
-        return $user->hasAnyRole(['store_manager', 'admin', 'super_admin']);
+        return $user->hasAnyRole(['Stores Manager', 'Super Administrator', 'Super Administrator']);
     }
 
     /**
@@ -119,7 +123,7 @@ class PurchaseOrderPolicy
      */
     public function viewReceives(User $user, PurchaseOrder $po): bool
     {
-        return $user->hasAnyRole(['procurement_officer', 'store_manager', 'finance_manager', 'admin', 'super_admin']);
+        return $user->hasAnyRole(['Procurement Officer', 'Stores Manager', 'Finance Manager', 'Super Administrator', 'Super Administrator']);
     }
 
     /**
@@ -135,7 +139,7 @@ class PurchaseOrderPolicy
      */
     public function emailSupplier(User $user, PurchaseOrder $po): bool
     {
-        return $user->hasAnyRole(['procurement_officer', 'admin', 'super_admin'])
+        return $user->hasAnyRole(['Procurement Officer', 'Super Administrator', 'Super Administrator'])
             && in_array($po->status, ['draft', 'issued']);
     }
 }

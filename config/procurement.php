@@ -62,16 +62,19 @@ return [
     */
     'etims' => [
         'enabled' => env('ETIMS_ENABLED', false),
+        'enforce_on_payment' => env('ETIMS_ENFORCE_ON_PAYMENT', true),
+        'grace_period_days' => env('ETIMS_GRACE_PERIOD_DAYS', 7),
         'api_url' => env('ETIMS_API_URL', ''),
         'api_key' => env('ETIMS_API_KEY', ''),
         'pin' => env('ETIMS_PIN', ''),
         'timeout' => 30,
         'retry_attempts' => 3,
+        'verification_required' => true,
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Procurement Thresholds (KES)
+    | Procurement Thresholds (KES) — legacy keys kept for backwards compatibility
     |--------------------------------------------------------------------------
     */
     'thresholds' => [
@@ -81,6 +84,57 @@ return [
         'tender_required' => env('THRESHOLD_TENDER_REQUIRED', 500000),
         'quotations_required' => 3, // Minimum number of quotations
         'single_source_threshold' => 50000, // Max for single source
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | 5-Tier Cash Band System (PPADA-aligned)
+    |--------------------------------------------------------------------------
+    | Each band defines the sourcing method, minimum quotes required, and
+    | approval roles. Amounts are in KES (inclusive boundaries).
+    |--------------------------------------------------------------------------
+    */
+    'cash_bands' => [
+        'micro' => [
+            'label'      => 'Micro Purchase',
+            'min'        => 0,
+            'max'        => 50000,
+            'method'     => 'spot_buy',
+            'min_quotes' => 1,
+            'approvers'  => ['hod', 'procurement-officer', 'accountant'],
+        ],
+        'low' => [
+            'label'      => 'Low Value',
+            'min'        => 50001,
+            'max'        => 250000,
+            'method'     => 'rfq',
+            'min_quotes' => 3,
+            'approvers'  => ['hod', 'procurement-officer', 'accountant', 'principal'],
+        ],
+        'medium' => [
+            'label'      => 'Medium Value',
+            'min'        => 250001,
+            'max'        => 1000000,
+            'method'     => 'rfq_formal',
+            'min_quotes' => 3,
+            'approvers'  => ['procurement-officer', 'accountant', 'principal'],
+        ],
+        'high' => [
+            'label'      => 'High Value',
+            'min'        => 1000001,
+            'max'        => 5000000,
+            'method'     => 'tender',
+            'min_quotes' => 0,
+            'approvers'  => ['board'],
+        ],
+        'strategic' => [
+            'label'      => 'Strategic',
+            'min'        => 5000001,
+            'max'        => null, // no upper limit
+            'method'     => 'tender',
+            'min_quotes' => 0,
+            'approvers'  => ['board'],
+        ],
     ],
 
     /*
@@ -96,6 +150,11 @@ return [
         'three_way_match' => [
             'enforce' => true,
             'tolerance_percentage' => 2, // 2% variance allowed
+        ],
+        'conflict_of_interest' => [
+            'enforce' => env('COI_ENFORCEMENT_ENABLED', true),
+            'declaration_required_for_evaluation' => true,
+            'auto_exclude_on_conflict' => true,
         ],
         'approval_timeout_hours' => 72,
         'requisition_validity_days' => 90,
@@ -114,6 +173,8 @@ return [
         'requires_retrospective_approval' => true,
         'notification_required' => true,
     ],
+
+    // eTIMS config is defined above under KRA / eTIMS Integration Configuration.
 
     'budget' => [
         'overrun_allowed' => env('BUDGET_OVERRUN_ALLOWED', false),

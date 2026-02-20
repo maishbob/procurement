@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full bg-gray-50">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,10 +17,15 @@
     <!-- Alpine.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
+    <style>
+        * { margin: 0; padding: 0; }
+        html, body { height: 100%; margin: 0; padding: 0; }
+    </style>
+
     @stack('styles')
 </head>
 <body class="h-full font-sans antialiased" x-data="{ sidebarOpen: false, mobileMenuOpen: false }">
-    <div class="min-h-full">
+    <div class="h-full">
         <!-- Mobile sidebar -->
         <div x-show="sidebarOpen" 
              x-cloak
@@ -67,11 +72,11 @@
         </div>
 
         <!-- Desktop sidebar -->
-        <div class="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-72 lg:flex-col">
+        <div class="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-72 lg:flex-col bg-gradient-to-b from-primary-900 to-primary-800">
             @include('layouts.partials.sidebar')
         </div>
 
-        <div class="lg:pl-72">
+        <div class="lg:ml-72">
             <!-- Top navbar -->
             @include('layouts.partials.navbar')
 
