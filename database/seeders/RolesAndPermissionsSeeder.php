@@ -33,6 +33,13 @@ class RolesAndPermissionsSeeder extends Seeder
                 'is_system_role' => true,
             ],
             [
+                'name' => 'Finance Officer',
+                'slug' => 'finance_officer',
+                'description' => 'Finance Officer - Payment creation and submission',
+                'level' => 4,
+                'is_system_role' => true,
+            ],
+            [
                 'name' => 'Principal',
                 'slug' => 'principal',
                 'description' => 'School Principal - High-level approvals',
@@ -112,13 +119,13 @@ class RolesAndPermissionsSeeder extends Seeder
         ];
 
         foreach ($roles as $roleData) {
-            Role::firstOrCreate(
-                [
-                    'slug' => $roleData['slug'],
-                    'guard_name' => 'web',
-                ],
-                $roleData
-            );
+            $role = Role::findOrCreate($roleData['slug'], 'web');
+            // Optionally update name/description/level if changed
+            $role->name = $roleData['name'];
+            $role->description = $roleData['description'] ?? null;
+            $role->level = $roleData['level'] ?? null;
+            $role->is_system_role = $roleData['is_system_role'] ?? false;
+            $role->save();
         }
 
         // 2. Create Permissions
@@ -234,23 +241,18 @@ class RolesAndPermissionsSeeder extends Seeder
 
         $this->assignPermissionsToRole('super-admin', [
             // Super admin gets everything
+            'planning.*',
             'requisitions.*',
             'procurement.*',
             'purchase-orders.*',
-            'grn.*',
+            'receiving.*',
             'inventory.*',
             'suppliers.*',
-            'invoices.*',
-            'payments.*',
-            'wht.*',
+            'finance.*',
             'budget.*',
             'reports.*',
             'audit.*',
-            'users.*',
-            'roles.*',
-            'permissions.*',
-            'departments.*',
-            'system.*'
+            'admin.*'
         ]);
 
         $this->assignPermissionsToRole('principal', [

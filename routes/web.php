@@ -22,6 +22,9 @@ use App\Http\Controllers\SupplierASLController;
 use App\Http\Controllers\ConflictOfInterestController;
 use App\Http\Controllers\AnnualProcurementPlanController;
 use App\Http\Controllers\CapaController;
+use App\Http\Controllers\UpgradeController;
+use App\Http\Controllers\AdminController;
+use App\Http\Controllers\PesapalWebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -32,6 +35,12 @@ use App\Http\Controllers\CapaController;
 | Minimal configuration while service architecture is being aligned
 |
 */
+
+// Secure upgrade route (runs migrations and clears cache)
+Route::get('/system/upgrade', [UpgradeController::class, 'upgrade'])->name('system.upgrade');
+Route::get('/system/ping', function () {
+    return response()->json(['status' => 'ok', 'message' => 'System is reachable']);
+});
 
 
 // Redirect home to login
@@ -63,7 +72,14 @@ Route::middleware(['auth'])->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    // Requisitions
+    // Requisitions — custom routes must precede the resource to avoid
+    // the {requisition} wildcard capturing literal path segments.
+    Route::get('requisitions/pending-approval', [RequisitionController::class, 'pendingApproval'])->name('requisitions.pending-approval');
+    Route::post('requisitions/{requisition}/submit', [RequisitionController::class, 'submit'])->name('requisitions.submit');
+    Route::post('requisitions/{requisition}/approve', [RequisitionController::class, 'approve'])->name('requisitions.approve');
+    Route::post('requisitions/{requisition}/reject', [RequisitionController::class, 'reject'])->name('requisitions.reject');
+    Route::post('requisitions/{requisition}/cancel', [RequisitionController::class, 'cancel'])->name('requisitions.cancel');
+    Route::get('requisitions/{requisition}/download', [RequisitionController::class, 'download'])->name('requisitions.download');
     Route::resource('requisitions', RequisitionController::class)->names('requisitions');
 
     // Procurement RFQ Routes
@@ -134,10 +150,8 @@ Route::middleware(['auth'])->group(function () {
     // Inventory
     Route::resource('inventory', InventoryController::class)->names('inventory');
 
-    // Suppliers
-    Route::resource('suppliers', SupplierController::class)->names('suppliers');
-
-    // Approved Supplier List (ASL)
+    // Approved Supplier List (ASL) — must be BEFORE the resource to avoid
+    // suppliers/{supplier} wildcard swallowing GET /suppliers/asl
     Route::prefix('suppliers')->name('suppliers.')->group(function () {
         Route::get('asl', [SupplierASLController::class, 'index'])->name('asl.index');
         Route::get('{supplier}/asl/review', [SupplierASLController::class, 'review'])->name('asl.review');
@@ -151,6 +165,9 @@ Route::middleware(['auth'])->group(function () {
         Route::get('{supplier}/onboarding/upload', [SupplierASLController::class, 'showUploadForm'])->name('onboarding.upload');
         Route::post('{supplier}/onboarding/upload', [SupplierASLController::class, 'storeDocument'])->name('onboarding.upload.store');
     });
+
+    // Suppliers
+    Route::resource('suppliers', SupplierController::class)->names('suppliers');
 
     // Conflict of Interest Declarations
     Route::prefix('procurement')->name('procurement.')->group(function () {
@@ -175,7 +192,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('payments/reconciliation', [PaymentController::class, 'reconciliation'])->name('payments.reconciliation');
     Route::post('payments/reconciliation', [PaymentController::class, 'storeReconciliation'])->name('payments.reconciliation.store');
 
-    // Reports
+    // Reports — dashboard must be before resource() to prevent {report} wildcard capture
+    Route::get('reports/dashboard', [ReportController::class, 'dashboard'])->name('reports.dashboard');
     Route::resource('reports', ReportController::class)->names('reports');
 
     // Budget Setup
@@ -203,17 +221,6 @@ Route::middleware(['auth'])->group(function () {
     // Departments
     Route::resource('departments', DepartmentController::class)->names('departments');
 
-    // Users (Admin)
-    Route::resource('admin/users', UserController::class)->names([
-        'index' => 'admin.users.index',
-        'create' => 'admin.users.create',
-        'store' => 'admin.users.store',
-        'show' => 'admin.users.show',
-        'edit' => 'admin.users.edit',
-        'update' => 'admin.users.update',
-        'destroy' => 'admin.users.destroy',
-    ]);
-
     // Profile
     Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
     Route::get('/profile/edit', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -237,14 +244,80 @@ Route::middleware(['auth'])->group(function () {
     Route::post('capa/{capa}/close',    [CapaController::class, 'close'])->name('capa.close');
     Route::post('capa/{capa}/updates',  [CapaController::class, 'storeUpdate'])->name('capa.updates.store');
 
-    // KPI Dashboard
-    Route::get('/reports/dashboard', [ReportController::class, 'dashboard'])->name('reports.dashboard');
-
     // PesaPal payment initiation
     Route::post('payments/{payment}/initiate', [PaymentController::class, 'initiatePesapal'])->name('payments.initiate');
+
+    // =========================================================================
+    // ADMIN PANEL
+    // =========================================================================
+    Route::prefix('admin')->name('admin.')->group(function () {
+
+        // Dashboard
+        Route::get('/', [AdminController::class, 'index'])->name('index');
+
+        // System
+        Route::get('health', [AdminController::class, 'systemHealth'])->name('health');
+        Route::post('cache/clear', [AdminController::class, 'clearCache'])->name('cache.clear');
+
+        // Activity logs
+        Route::get('activity-logs', [AdminController::class, 'activityLogs'])->name('activity-logs');
+        Route::get('activity-logs/export', [AdminController::class, 'exportActivityLogs'])->name('activity-logs.export');
+
+        // Settings
+        Route::get('settings', [AdminController::class, 'editSettings'])->name('settings.index');
+        Route::patch('settings', [AdminController::class, 'updateSettings'])->name('settings.update');
+        Route::get('settings/fiscal-year', [AdminController::class, 'editFiscalYear'])->name('settings.fiscal-year');
+        Route::post('settings/fiscal-year', [AdminController::class, 'updateFiscalYear'])->name('settings.fiscal-year.update');
+
+        // Users (via AdminController)
+        Route::get('users', [AdminController::class, 'indexUsers'])->name('users.index');
+        Route::get('users/create', [AdminController::class, 'createUser'])->name('users.create');
+        Route::post('users', [AdminController::class, 'storeUser'])->name('users.store');
+        Route::get('users/{user}', [AdminController::class, 'showUser'])->name('users.show');
+        Route::get('users/{user}/edit', [AdminController::class, 'editUser'])->name('users.edit');
+        Route::patch('users/{user}', [AdminController::class, 'updateUser'])->name('users.update');
+        Route::delete('users/{user}', [AdminController::class, 'destroyUser'])->name('users.destroy');
+        Route::post('users/{user}/reset-password', [AdminController::class, 'resetPassword'])->name('users.reset-password');
+        Route::post('users/{user}/toggle-status', [AdminController::class, 'toggleUserStatus'])->name('users.toggle-status');
+
+        // Departments (via AdminController)
+        Route::get('departments', [AdminController::class, 'indexDepartments'])->name('departments.index');
+        Route::get('departments/create', [AdminController::class, 'createDepartment'])->name('departments.create');
+        Route::post('departments', [AdminController::class, 'storeDepartment'])->name('departments.store');
+        Route::get('departments/{department}', [AdminController::class, 'showDepartment'])->name('departments.show');
+        Route::get('departments/{department}/edit', [AdminController::class, 'editDepartment'])->name('departments.edit');
+        Route::patch('departments/{department}', [AdminController::class, 'updateDepartment'])->name('departments.update');
+        Route::delete('departments/{department}', [AdminController::class, 'destroyDepartment'])->name('departments.destroy');
+
+        // Budget Lines
+        Route::get('budget-lines', [AdminController::class, 'indexBudgetLines'])->name('budget-lines.index');
+        Route::get('budget-lines/create', [AdminController::class, 'createBudgetLine'])->name('budget-lines.create');
+        Route::post('budget-lines', [AdminController::class, 'storeBudgetLine'])->name('budget-lines.store');
+
+        // Stores
+        Route::get('stores', [AdminController::class, 'indexStores'])->name('stores.index');
+        Route::get('stores/create', [AdminController::class, 'createStore'])->name('stores.create');
+        Route::post('stores', [AdminController::class, 'storeStore'])->name('stores.store');
+
+        // Item Categories
+        Route::get('categories', [AdminController::class, 'indexCategories'])->name('categories.index');
+        Route::get('categories/create', [AdminController::class, 'createCategory'])->name('categories.create');
+        Route::post('categories', [AdminController::class, 'storeCategory'])->name('categories.store');
+
+        // AJAX helpers
+        Route::get('budget-lines/{department}/lines', [AdminController::class, 'getBudgetLines'])->name('budget-lines.by-department');
+        Route::get('budget-lines/{budgetLine}/balance', [AdminController::class, 'getBudgetBalance'])->name('budget-lines.balance');
+        Route::get('exchange-rates', [AdminController::class, 'getExchangeRates'])->name('exchange-rates');
+    });
 });
+
+// Pesapal IPN webhook (no auth — called by Pesapal servers)
+Route::post('webhooks/pesapal', [PesapalWebhookController::class, 'callback'])->name('webhooks.pesapal');
 
 // Fallback 404 handler
 Route::fallback(function () {
-    return response()->view('errors.404', [], 404);
+    return response()->json([
+        'error' => 'Route not found. Ensure your web server document root points to the public/ folder.',
+        'path' => request()->path()
+    ], 404);
 });

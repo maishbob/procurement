@@ -11,6 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('capa_action_updates');
+        Schema::dropIfExists('capa_actions');
+        Schema::enableForeignKeyConstraints();
+
         Schema::create('capa_actions', function (Blueprint $table) {
             $table->id();
             $table->string('capa_number')->unique();

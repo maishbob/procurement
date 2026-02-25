@@ -11,6 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('payment_gateway_audit_log');
+        Schema::dropIfExists('payment_gateway_transactions');
+        Schema::dropIfExists('payment_gateway_roles');
+        Schema::enableForeignKeyConstraints();
+
         Schema::create('payment_gateway_roles', function (Blueprint $table) {
             $table->id();
             $table->string('gateway_provider')->default('pesapal'); // pesapal, mpesa, stripe, etc.

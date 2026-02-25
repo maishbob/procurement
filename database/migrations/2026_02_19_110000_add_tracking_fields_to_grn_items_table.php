@@ -9,10 +9,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('grn_items', function (Blueprint $table) {
-            $table->string('serial_number')->nullable();
-            $table->string('batch_number')->nullable();
-            $table->date('expiry_date')->nullable();
-            $table->string('storage_location')->nullable();
+            if (!Schema::hasColumn('grn_items', 'serial_number')) {
+                $table->string('serial_number')->nullable();
+            }
+            if (!Schema::hasColumn('grn_items', 'batch_number')) {
+                $table->string('batch_number')->nullable();
+            }
+            if (!Schema::hasColumn('grn_items', 'expiry_date')) {
+                $table->date('expiry_date')->nullable();
+            }
+            if (!Schema::hasColumn('grn_items', 'storage_location')) {
+                $table->string('storage_location')->nullable();
+            }
         });
     }
 

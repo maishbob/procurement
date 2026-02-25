@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('budget_approvals');
+        Schema::enableForeignKeyConstraints();
+
         Schema::create('budget_approvals', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('budget_line_id');

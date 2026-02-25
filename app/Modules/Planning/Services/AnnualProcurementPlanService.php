@@ -19,6 +19,13 @@ use Carbon\Carbon;
 class AnnualProcurementPlanService
 {
     /**
+     * Get all annual procurement plans
+     */
+    public function getAll()
+    {
+        return AnnualProcurementPlan::all();
+    }
+    /**
      * Reject an annual procurement plan
      */
     public function reject(AnnualProcurementPlan $plan, string $comments = null): AnnualProcurementPlan

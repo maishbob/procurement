@@ -19,6 +19,7 @@ class BudgetLine extends Model
         'cost_center_id',
         'category',
         'allocated_amount',
+        'available_amount',
         'committed_amount',
         'spent_amount',
         'is_active',

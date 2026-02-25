@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use App\Models\Role;
-use App\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\Models\Permission;
 use App\Models\Department;
 use App\Models\BudgetLine;
 use App\Models\Store;
@@ -24,7 +24,7 @@ class AdminController extends Controller
      */
     public function index()
     {
-        $this->authorize('admin');
+        $this->authorize('system.configure');
 
         $stats = [
             'total_users' => User::count(),
@@ -47,7 +47,7 @@ class AdminController extends Controller
      */
     public function indexUsers(Request $request)
     {
-        $this->authorize('admin');
+        $this->authorize('users.manage');
 
         $filters = [
             'role' => $request->get('role'),
@@ -63,7 +63,9 @@ class AdminController extends Controller
             ->when($filters['search'], fn($q) => $q->where('name', 'like', "%{$filters['search']}%"))
             ->paginate(20);
 
-        return view('admin.users.index', compact('users', 'filters'));
+        $roles = Role::all();
+
+        return view('admin.users.index', compact('users', 'filters', 'roles'));
     }
 
     /**
@@ -71,7 +73,7 @@ class AdminController extends Controller
      */
     public function createUser()
     {
-        $this->authorize('admin');
+        $this->authorize('users.manage');
 
         $roles = Role::all();
         $departments = Department::all();
@@ -84,7 +86,7 @@ class AdminController extends Controller
      */
     public function storeUser(Request $request)
     {
-        $this->authorize('admin');
+        $this->authorize('users.manage');
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -122,7 +124,7 @@ class AdminController extends Controller
      */
     public function showUser(User $user)
     {
-        $this->authorize('admin');
+        $this->authorize('users.manage');
 
         $roles = $user->roles()->get();
         $recentActivity = AuditLog::where('user_id', $user->id)
@@ -138,7 +140,7 @@ class AdminController extends Controller
      */
     public function editUser(User $user)
     {
-        $this->authorize('admin');
+        $this->authorize('users.manage');
 
         $roles = Role::all();
         $departments = Department::all();
@@ -152,21 +154,33 @@ class AdminController extends Controller
      */
     public function updateUser(Request $request, User $user)
     {
-        $this->authorize('admin');
+        $this->authorize('users.manage');
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|email|unique:users,email,' . $user->id,
-            'phone' => 'sometimes|string|unique:users,phone,' . $user->id,
+            'phone' => 'nullable|string|unique:users,phone,' . $user->id,
             'department_id' => 'sometimes|exists:departments,id',
             'role_ids' => 'sometimes|array|min:1',
             'role_ids.*' => 'exists:roles,id',
             'approval_limit' => 'nullable|numeric|min:0',
-            'is_active' => 'boolean',
+            'is_active' => 'nullable|boolean',
+            'password' => 'nullable|string|min:8|confirmed',
         ]);
 
         try {
-            $user->update($validated);
+            $updateData = collect($validated)
+                ->except(['role_ids', 'password', 'is_active'])
+                ->toArray();
+
+            // Checkbox: present and truthy = active, absent = inactive
+            $updateData['is_active'] = $request->boolean('is_active');
+
+            if (!empty($validated['password'])) {
+                $updateData['password'] = Hash::make($validated['password']);
+            }
+
+            $user->update($updateData);
 
             if (!empty($validated['role_ids'])) {
                 $user->roles()->sync($validated['role_ids']);
@@ -184,7 +198,7 @@ class AdminController extends Controller
      */
     public function destroyUser(User $user)
     {
-        $this->authorize('admin');
+        $this->authorize('users.manage');
 
         if ($user->id === auth()->id()) {
             return back()->with('error', 'Cannot delete your own account');
@@ -205,7 +219,7 @@ class AdminController extends Controller
      */
     public function resetPassword(User $user)
     {
-        $this->authorize('admin');
+        $this->authorize('users.manage');
 
         $user->update(['password' => Hash::make('temporary_password')]);
 
@@ -217,7 +231,7 @@ class AdminController extends Controller
      */
     public function toggleUserStatus(User $user)
     {
-        $this->authorize('admin');
+        $this->authorize('users.manage');
 
         $user->update(['is_active' => !$user->is_active]);
 
@@ -231,7 +245,7 @@ class AdminController extends Controller
      */
     public function indexDepartments()
     {
-        $this->authorize('admin');
+        $this->authorize('departments.manage');
 
         $departments = Department::withCount('users')->paginate(20);
 
@@ -243,7 +257,7 @@ class AdminController extends Controller
      */
     public function createDepartment()
     {
-        $this->authorize('admin');
+        $this->authorize('departments.manage');
 
         return view('admin.departments.create');
     }
@@ -253,7 +267,7 @@ class AdminController extends Controller
      */
     public function storeDepartment(Request $request)
     {
-        $this->authorize('admin');
+        $this->authorize('departments.manage');
 
         $validated = $request->validate([
             'name' => 'required|string|unique:departments',
@@ -277,7 +291,7 @@ class AdminController extends Controller
      */
     public function showDepartment(Department $department)
     {
-        $this->authorize('admin');
+        $this->authorize('departments.manage');
 
         $users = $department->users()->get();
 
@@ -289,7 +303,7 @@ class AdminController extends Controller
      */
     public function editDepartment(Department $department)
     {
-        $this->authorize('admin');
+        $this->authorize('departments.manage');
 
         return view('admin.departments.edit', compact('department'));
     }
@@ -299,7 +313,7 @@ class AdminController extends Controller
      */
     public function updateDepartment(Request $request, Department $department)
     {
-        $this->authorize('admin');
+        $this->authorize('departments.manage');
 
         $validated = $request->validate([
             'name' => 'sometimes|string|unique:departments,name,' . $department->id,
@@ -323,7 +337,7 @@ class AdminController extends Controller
      */
     public function destroyDepartment(Department $department)
     {
-        $this->authorize('admin');
+        $this->authorize('departments.manage');
 
         if ($department->users()->exists()) {
             return back()->with('error', 'Cannot delete department with assigned users');
@@ -346,7 +360,7 @@ class AdminController extends Controller
      */
     public function indexBudgetLines(Request $request)
     {
-        $this->authorize('admin');
+        $this->authorize('budget.manage');
 
         $filters = [
             'fiscal_year' => $request->get('fiscal_year', now()->year),
@@ -366,7 +380,7 @@ class AdminController extends Controller
      */
     public function createBudgetLine()
     {
-        $this->authorize('admin');
+        $this->authorize('budget.manage');
 
         $departments = Department::all();
 
@@ -378,7 +392,7 @@ class AdminController extends Controller
      */
     public function storeBudgetLine(Request $request)
     {
-        $this->authorize('admin');
+        $this->authorize('budget.manage');
 
         $validated = $request->validate([
             'department_id' => 'required|exists:departments,id',
@@ -408,7 +422,7 @@ class AdminController extends Controller
      */
     public function indexStores()
     {
-        $this->authorize('admin');
+        $this->authorize('inventory.manage');
 
         $stores = Store::withCount('inventoryItems')->paginate(20);
 
@@ -420,7 +434,7 @@ class AdminController extends Controller
      */
     public function createStore()
     {
-        $this->authorize('admin');
+        $this->authorize('inventory.manage');
 
         return view('admin.stores.create');
     }
@@ -430,7 +444,7 @@ class AdminController extends Controller
      */
     public function storeStore(Request $request)
     {
-        $this->authorize('admin');
+        $this->authorize('inventory.manage');
 
         $validated = $request->validate([
             'store_code' => 'required|string|unique:stores',
@@ -456,7 +470,7 @@ class AdminController extends Controller
      */
     public function indexCategories()
     {
-        $this->authorize('admin');
+        $this->authorize('inventory.manage');
 
         $categories = ItemCategory::withCount('items')->paginate(20);
 
@@ -468,7 +482,7 @@ class AdminController extends Controller
      */
     public function createCategory()
     {
-        $this->authorize('admin');
+        $this->authorize('inventory.manage');
 
         return view('admin.categories.create');
     }
@@ -478,7 +492,7 @@ class AdminController extends Controller
      */
     public function storeCategory(Request $request)
     {
-        $this->authorize('admin');
+        $this->authorize('inventory.manage');
 
         $validated = $request->validate([
             'category_name' => 'required|string|unique:item_categories',
@@ -502,7 +516,7 @@ class AdminController extends Controller
      */
     public function editSettings()
     {
-        $this->authorize('admin');
+        $this->authorize('system.configure');
 
         $settings = \App\Models\SystemSetting::all()->pluck('value', 'key')->toArray();
 
@@ -514,7 +528,7 @@ class AdminController extends Controller
      */
     public function updateSettings(Request $request)
     {
-        $this->authorize('admin');
+        $this->authorize('system.configure');
 
         $validated = $request->validate([
             'company_name' => 'required|string',
@@ -547,7 +561,7 @@ class AdminController extends Controller
      */
     public function editFiscalYear()
     {
-        $this->authorize('admin');
+        $this->authorize('system.configure');
 
         $fiscalYears = \App\Models\FiscalYear::all();
 
@@ -559,7 +573,7 @@ class AdminController extends Controller
      */
     public function updateFiscalYear(Request $request)
     {
-        $this->authorize('admin');
+        $this->authorize('system.configure');
 
         $validated = $request->validate([
             'start_date' => 'required|date',
@@ -584,7 +598,7 @@ class AdminController extends Controller
      */
     public function activityLogs(Request $request)
     {
-        $this->authorize('admin');
+        $this->authorize('audit.view-all');
 
         $filters = [
             'user_id' => $request->get('user_id'),
@@ -609,7 +623,7 @@ class AdminController extends Controller
      */
     public function exportActivityLogs(Request $request)
     {
-        $this->authorize('admin');
+        $this->authorize('audit.view-all');
 
         try {
             $logs = AuditLog::query()
@@ -628,7 +642,7 @@ class AdminController extends Controller
      */
     public function systemHealth()
     {
-        $this->authorize('admin');
+        $this->authorize('system.configure');
 
         $health = [
             'database' => $this->checkDatabase(),
@@ -646,7 +660,7 @@ class AdminController extends Controller
      */
     public function clearCache()
     {
-        $this->authorize('admin');
+        $this->authorize('system.configure');
 
         Cache::flush();
 

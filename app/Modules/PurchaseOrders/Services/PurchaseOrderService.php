@@ -59,6 +59,25 @@ class PurchaseOrderService
             ['created', 'approved']
         );
 
+        // Enforce Framework Contract validity limits
+        if (!empty($data['procurement_process_id'])) {
+            $process = \App\Models\ProcurementProcess::find($data['procurement_process_id']);
+            if ($process && $process->type === 'framework_agreement') {
+                $bid = \App\Models\SupplierBid::where('procurement_process_id', $process->id)
+                    ->where('supplier_id', $supplierId)
+                    ->where('status', 'awarded')
+                    ->first();
+                
+                if ($bid && $bid->validity_days && $process->awarded_at) {
+                    // Check if current date is past the validity period
+                    $expiryDate = $process->awarded_at->copy()->addDays($bid->validity_days);
+                    if (now()->greaterThan($expiryDate)) {
+                        throw new Exception("Cannot create PO. The framework agreement expired on {$expiryDate->format('Y-m-d')}.");
+                    }
+                }
+            }
+        }
+
         return DB::transaction(function () use ($requisition, $supplierId, $data) {
             // Generate PO number
             $data['po_number'] = $this->generatePONumber();

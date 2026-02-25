@@ -60,8 +60,8 @@ class KpiDashboardService
         });
 
         return [
-            'average_cycle_days' => $cycleTimes->avg() ?? 0,
-            'median_cycle_days' => $cycleTimes->median() ?? 0,
+            'average_days' => round($cycleTimes->avg() ?? 0, 1),
+            'median_days' => round($cycleTimes->median() ?? 0, 1),
             'min_cycle_days' => $cycleTimes->min() ?? 0,
             'max_cycle_days' => $cycleTimes->max() ?? 0,
             'total_requisitions' => $completedRequisitions->count(),
@@ -76,30 +76,27 @@ class KpiDashboardService
      */
     protected function getBudgetUtilizationKpis(Carbon $startDate, Carbon $endDate): array
     {
-        $payments = Payment::whereBetween('created_at', [$startDate, $endDate])
-            ->where('status', 'completed')
-            ->get();
-
-        $totalBudget = config('procurement.annual_budget', 10000000); // Should come from budget module
-        $totalSpent = $payments->sum('net_amount_base');
-        $utilizationRate = $totalBudget > 0 ? ($totalSpent / $totalBudget) * 100 : 0;
+        $totalBudget = \App\Models\BudgetLine::sum('allocated_amount') ?: config('procurement.annual_budget', 10000000);
+        $totalCommitted = \App\Models\BudgetLine::sum('committed_amount');
+        $totalSpent = \App\Models\BudgetLine::sum('spent_amount');
+        $utilizationRate = $totalBudget > 0 ? (($totalCommitted + $totalSpent) / $totalBudget) * 100 : 0;
 
         // Get budget by department
-        $spendByDepartment = Requisition::whereBetween('created_at', [$startDate, $endDate])
-            ->whereIn('status', ['completed', 'po_created'])
+        $spendByDepartment = Requisition::whereBetween('requisitions.created_at', [$startDate, $endDate])
+            ->whereIn('requisitions.status', ['completed', 'po_created'])
             ->join('departments', 'requisitions.department_id', '=', 'departments.id')
             ->groupBy('departments.id', 'departments.name')
-            ->select('departments.name', DB::raw('SUM(requisitions.estimated_cost) as total_spend'))
+            ->select('departments.name', DB::raw('SUM(requisitions.estimated_total) as total_spent'))
             ->get();
 
         return [
-            'total_budget_kes' => $totalBudget,
-            'total_spent_kes' => round($totalSpent, 2),
-            'available_budget_kes' => round($totalBudget - $totalSpent, 2),
+            'total_budget' => round($totalBudget, 2),
+            'total_spent' => round($totalSpent, 2),
+            'total_committed' => round($totalCommitted, 2),
             'utilization_percentage' => round($utilizationRate, 2),
             'spend_by_department' => $spendByDepartment->map(fn($d) => [
                 'department' => $d->name,
-                'total_spend' => round($d->total_spend, 2),
+                'total_spent' => round($d->total_spent, 2),
             ])->toArray(),
         ];
     }
@@ -174,8 +171,13 @@ class KpiDashboardService
 
         $approvalComplianceRate = $totalRequisitions > 0 ? ($requisitionsWithProperApproval / $totalRequisitions) * 100 : 0;
 
+        $threeWayFailures = $totalInvoices - $invoicesWithMatch;
+        $nonEtimsInvoices = $totalInvoices - $invoicesWithEtims;
+
         return [
-            'three_way_match_compliance_rate' => round($matchComplianceRate, 2),
+            'three_way_match_rate' => round($matchComplianceRate, 2),
+            'three_way_match_failures' => $threeWayFailures,
+            'non_etims_invoices' => $nonEtimsInvoices,
             'etims_compliance_rate' => round($etimsComplianceRate, 2),
             'approval_compliance_rate' => round($approvalComplianceRate, 2),
             'total_invoices_processed' => $totalInvoices,
@@ -246,7 +248,7 @@ class KpiDashboardService
             'average_processing_days' => round($averageProcessingDays, 2),
             'payments_processed_under_7_days' => $paymentsUnder7Days,
             'on_time_payment_rate' => round($onTimePaymentRate, 2),
-            'total_payment_value_kes' => round($completedPayments->sum('net_amount_base'), 2),
+            'total_payment_value' => round($completedPayments->sum('net_amount_base'), 2),
         ];
     }
 
@@ -257,16 +259,19 @@ class KpiDashboardService
     {
         $requisitions = Requisition::whereBetween('created_at', [$startDate, $endDate])->get();
 
+        $total = $requisitions->count();
+        $approved = $requisitions->whereIn('status', ['hod_approved', 'budget_approved', 'procurement_queue', 'completed'])->count();
+        $rejected = $requisitions->where('status', 'rejected')->count();
+
         return [
-            'total_requisitions' => $requisitions->count(),
-            'approved_requisitions' => $requisitions->whereIn('status', ['hod_approved', 'budget_approved', 'procurement_queue', 'completed'])->count(),
-            'rejected_requisitions' => $requisitions->where('status', 'rejected')->count(),
+            'total_requisitions' => $total,
+            'approved_requisitions' => $approved,
+            'rejected_requisitions' => $rejected,
             'cancelled_requisitions' => $requisitions->where('status', 'cancelled')->count(),
-            'approval_rate' => $requisitions->count() > 0
-                ? ($requisitions->whereIn('status', ['hod_approved', 'budget_approved', 'procurement_queue', 'completed'])->count() / $requisitions->count()) * 100
-                : 0,
-            'emergency_procurements' => $requisitions->where('is_emergency', true)->count(),
-            'single_source_procurements' => ProcurementProcess::whereBetween('created_at', [$startDate, $endDate])
+            'approval_rate' => $total > 0 ? round(($approved / $total) * 100, 2) : 0,
+            'rejection_rate' => $total > 0 ? round(($rejected / $total) * 100, 2) : 0,
+            'emergency_procurement_count' => $requisitions->where('is_emergency', true)->count(),
+            'single_source_count' => ProcurementProcess::whereBetween('created_at', [$startDate, $endDate])
                 ->where('procurement_method', 'single_source')
                 ->count(),
         ];

@@ -26,10 +26,8 @@ class RequisitionController extends Controller
         $this->middleware('auth');
         $this->middleware('permission:requisitions.view')->only(['index', 'show']);
         $this->middleware('permission:requisitions.create')->only(['create', 'store']);
-        $this->middleware('permission:requisitions.update')->only(['edit', 'update']);
-        $this->middleware('permission:requisitions.submit')->only(['submit']);
-        $this->middleware('permission:requisitions.approve')->only(['approve']);
-        $this->middleware('permission:requisitions.reject')->only(['reject']);
+        $this->middleware('permission:requisitions.edit')->only(['edit', 'update']);
+        // submit, approve, and reject use complex role logic handled by RequisitionPolicy ($this->authorize)
     }
 
     /**
@@ -69,7 +67,7 @@ class RequisitionController extends Controller
 
         // Apply authorization filters
         $user = Auth::user();
-        if (!$user->can('requisitions.view_all')) {
+        if (!$user->can('requisitions.view-all')) {
             // Users can only see their department's requisitions
             $query->where('department_id', $user->department_id);
         }
@@ -77,7 +75,16 @@ class RequisitionController extends Controller
         $requisitions = $query->orderBy('created_at', 'desc')
             ->paginate(20);
 
-        return view('requisitions.index', compact('requisitions'));
+        // Pending requisitions for sidebar badge (HOD/depthead)
+        $pendingRequisitions = 0;
+        $user = Auth::user();
+        if ($user->hasRole(['hod', 'depthead', 'department head']) && $user->can('requisitions.view')) {
+            $pendingRequisitions = Requisition::where('department_id', $user->department_id)
+                ->whereIn('status', ['hod_review', 'submitted'])
+                ->count();
+        }
+
+        return view('requisitions.index', compact('requisitions', 'pendingRequisitions'));
     }
 
     /**

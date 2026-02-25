@@ -44,7 +44,7 @@ class PurchaseOrderController extends Controller
         $requisition = $requisitionId ? Requisition::findOrFail($requisitionId) : null;
 
         $suppliers = \App\Models\Supplier::where('is_blacklisted', false)
-            ->where('is_approved', true)
+            ->where('status', 'active')
             ->get();
 
         return view('purchase-orders.create', compact('requisition', 'suppliers'));
@@ -110,7 +110,7 @@ class PurchaseOrderController extends Controller
         }
 
         $suppliers = \App\Models\Supplier::where('is_blacklisted', false)
-            ->where('is_approved', true)
+            ->where('status', 'active')
             ->get();
 
         return view('purchase-orders.edit', compact('purchaseOrder', 'suppliers'));

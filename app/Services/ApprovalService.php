@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Core\Audit\AuditService;
 use App\Core\Workflow\WorkflowEngine;
 use App\Models\Requisition;
-use App\Models\RequisitionApproval;
+use App\Modules\Requisitions\Models\RequisitionApproval;
 use App\Models\SupplierInvoice;
 use App\Models\Payment;
 use App\Models\User;
@@ -53,8 +53,8 @@ class ApprovalService
     {
         $approver = auth()->user();
 
-        if ($requisition->status !== 'pending_approval') {
-            throw new \Exception('Requisition is not in pending approval status');
+        if (!in_array($requisition->status, ['submitted', 'hod_review'])) {
+            throw new \Exception('Requisition is not in a valid approval status (must be submitted or hod_review)');
         }
 
         // Check if user has authority to approve at this amount
@@ -66,19 +66,21 @@ class ApprovalService
         RequisitionApproval::create([
             'requisition_id' => $requisition->id,
             'approval_level' => $approvalLevel,
+            'sequence' => 1, // Default to 1 for HOD, adjust as needed for multi-level
             'approver_id' => $approver->id,
             'status' => 'approved',
-            'notes' => $notes,
-            'approved_at' => now(),
+            'comments' => $notes,
+            'responded_at' => now(),
         ]);
 
         // Check if this is final approval or move to next level
         $nextLevel = $this->getNextApprovalLevel($requisition);
 
         if ($nextLevel === null) {
-            // All approvals complete
-            $requisition->update(['status' => 'approved']);
-            $this->workflowEngine->transition($requisition, 'RequisitionWorkflow', 'approve_all');
+            // All approvals complete at this level (HOD)
+            $from = $requisition->status;
+            $requisition->update(['status' => 'hod_approved']);
+            $this->workflowEngine->transition($requisition, 'RequisitionWorkflow', $from, 'hod_approved');
         } else {
             // More approvals needed
             $requisition->update(['next_approval_level' => $nextLevel]);

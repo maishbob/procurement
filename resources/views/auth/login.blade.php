@@ -82,10 +82,7 @@
                         Welcome back
                     </h2>
                     <p class="mt-2 text-sm text-gray-600">
-                        Don't have an account?
-                        <a href="{{ route('register') }}" class="font-semibold text-primary-600 hover:text-primary-500 transition-colors">
-                            Sign up now
-                        </a>
+                        Contact your system administrator to get access.
                     </p>
                 </div>
 

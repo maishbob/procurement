@@ -91,11 +91,19 @@ class DatabaseSeeder extends Seeder
         }
 
         $departments = [
+            ['name' => 'Housekeeping', 'code' => 'HSK', 'head_of_department_id' => $deptHeadUser->id],
+            ['name' => 'Kitchen', 'code' => 'KIT', 'head_of_department_id' => $deptHeadUser->id],
+            ['name' => 'cafe', 'code' => 'CAFE', 'head_of_department_id' => $deptHeadUser->id],
+            ['name' => 'Farm', 'code' => 'FARM', 'head_of_department_id' => $deptHeadUser->id],
+            ['name' => 'Garage/Vehicles', 'code' => 'GAR', 'head_of_department_id' => $deptHeadUser->id],
+            ['name' => 'Repair & Maintenance', 'code' => 'R&M', 'head_of_department_id' => $deptHeadUser->id],
+            ['name' => 'Development', 'code' => 'DEV', 'head_of_department_id' => $deptHeadUser->id],
             ['name' => 'Administration', 'code' => 'ADM', 'head_of_department_id' => $deptHeadUser->id],
-            ['name' => 'Academic', 'code' => 'ACA', 'head_of_department_id' => $deptHeadUser->id],
-            ['name' => 'Infrastructure', 'code' => 'INF', 'head_of_department_id' => $deptHeadUser->id],
+            ['name' => 'Human Resource', 'code' => 'HR', 'head_of_department_id' => $deptHeadUser->id],
             ['name' => 'Finance', 'code' => 'FIN', 'head_of_department_id' => $deptHeadUser->id],
-            ['name' => 'Stores', 'code' => 'STR', 'head_of_department_id' => $deptHeadUser->id],
+            ['name' => 'Academics KG', 'code' => 'AKG', 'head_of_department_id' => $deptHeadUser->id],
+            ['name' => 'Academics Prep', 'code' => 'APRP', 'head_of_department_id' => $deptHeadUser->id],
+            ['name' => 'Academics SEC', 'code' => 'ASEC', 'head_of_department_id' => $deptHeadUser->id],
         ];
 
         foreach ($departments as $dept) {

@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('annual_procurement_plan_items');
+        Schema::enableForeignKeyConstraints();
+
         Schema::create('annual_procurement_plan_items', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('annual_procurement_plan_id');

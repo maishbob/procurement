@@ -12,6 +12,10 @@ use Carbon\Carbon;
 
 class SupplierInvoice extends Model
 {
+    /**
+     * The table associated with the model.
+     */
+    protected $table = 'supplier_invoices';
     use HasFactory, SoftDeletes;
 
     /**

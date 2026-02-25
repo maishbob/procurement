@@ -552,6 +552,11 @@ class ProcurementController extends Controller
             'comments' => 'nullable|string',
         ]);
 
+        $process = $bid->procurementProcess;
+        if (\App\Models\ConflictOfInterestDeclaration::hasConflict(auth()->id(), \App\Models\ProcurementProcess::class, $process->id)) {
+            return back()->with('error', 'You cannot evaluate this bid because you have declared a conflict of interest for this procurement process.');
+        }
+
         try {
             $bid->evaluations()->create([
                 'criterion' => $validated['criterion'],

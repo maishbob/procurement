@@ -273,6 +273,14 @@ class GRNController extends Controller
             'completion_certificate' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
         ]);
 
+        // Enforce expiry dates: block acceptance if any item expires within 30 days
+        $thresholdDate = now()->addDays(30);
+        foreach ($grn->items as $item) {
+            if ($item->quantity_received > 0 && $item->expiry_date && $item->expiry_date < $thresholdDate) {
+                return back()->with('error', "Cannot accept GRN. Item '{$item->description}' expires too soon ({$item->expiry_date->format('Y-m-d')}). Please reject the delivery or request a replacement.");
+            }
+        }
+
         $certificatePath = null;
         if ($request->hasFile('completion_certificate')) {
             $certificatePath = $request->file('completion_certificate')

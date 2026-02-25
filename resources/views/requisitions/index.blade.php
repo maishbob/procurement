@@ -47,7 +47,7 @@
                 </div>
 
                 <!-- Department filter -->
-                @if(auth()->user()->can('requisitions.view_all'))
+                @if(auth()->user()->can('requisitions.view-all'))
                 <div>
                     <label for="department_id" class="block text-sm font-medium text-gray-700">Department</label>
                     <select id="department_id" 
@@ -152,7 +152,7 @@
                             {{ $requisition->requester?->name ?? 'N/A' }}
                         </td>
                         <td class="px-3 py-4 text-sm text-gray-900 max-w-xs truncate">
-                            {{ $requisition->purpose }}
+                            {{ $requisition->title ?? $requisition->description }}
                         </td>
                         <td class="whitespace-nowrap px-3 py-4 text-sm">
                             <span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset {{ $requisition->priority_color }}">

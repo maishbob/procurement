@@ -22,16 +22,64 @@ class RequisitionController extends Controller
     {
         $this->authorize('viewAny', Requisition::class);
 
+        $user = auth()->user();
+
         $filters = [
             'status' => $request->get('status'),
-            'department_id' => $request->get('department_id'),
             'created_by' => $request->get('created_by'),
             'search' => $request->get('search'),
         ];
 
+        // Users with view-all permission can filter by any department;
+        // all others are restricted to their own department.
+        if ($user->can('requisitions.view-all')) {
+            $filters['department_id'] = $request->get('department_id');
+        } else {
+            $filters['department_id'] = $user->department_id;
+        }
+
         $requisitions = $this->requisitionService->getAllRequisitions($filters, 15);
 
-        return view('requisitions.index', compact('requisitions'));
+        $pendingRequisitions = 0;
+        if ($user->hasPermissionTo('requisitions.approve-hod')) {
+            $pendingRequisitions = Requisition::where('department_id', $user->department_id)
+                ->whereIn('status', ['submitted', 'hod_review'])
+                ->count();
+        }
+
+        $departments = \App\Models\Department::where('is_active', true)->get();
+
+        return view('requisitions.index', compact('requisitions', 'pendingRequisitions', 'departments'));
+    }
+
+    /**
+     * Show requisitions pending the current HOD's approval
+     */
+    public function pendingApproval(Request $request)
+    {
+        $this->authorize('viewAny', Requisition::class);
+
+        $user = auth()->user();
+
+        $query = Requisition::with(['department', 'requester', 'items'])
+            ->where('department_id', $user->department_id)
+            ->whereIn('status', ['submitted', 'hod_review'])
+            ->orderBy('created_at', 'desc');
+
+        if ($request->get('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('requisition_number', 'like', "%{$search}%")
+                    ->orWhere('title', 'like', "%{$search}%");
+            });
+        }
+
+        $requisitions = $query->paginate(15);
+        $pendingRequisitions = Requisition::where('department_id', $user->department_id)
+            ->whereIn('status', ['submitted', 'hod_review'])
+            ->count();
+
+        return view('requisitions.index', compact('requisitions', 'pendingRequisitions'));
     }
 
     /**
@@ -276,9 +324,9 @@ class RequisitionController extends Controller
         ]);
 
         try {
-            $this->approvalService->approveRequest(
+            $this->approvalService->approveRequisition(
                 $requisition,
-                auth()->user(),
+                1, // HOD approval level
                 $validated['comments'] ?? ''
             );
 

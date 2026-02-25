@@ -8,6 +8,16 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Drop pre-existing tables that may have been created by an older version
+        // of 2024_01_01_000002_create_suppliers_tables.php before the refactor.
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('supplier_blacklist_history');
+        Schema::dropIfExists('supplier_categories');
+        Schema::dropIfExists('supplier_performance_reviews');
+        Schema::dropIfExists('supplier_contacts');
+        Schema::dropIfExists('supplier_documents');
+        Schema::enableForeignKeyConstraints();
+
         // Supplier Documents
         Schema::create('supplier_documents', function (Blueprint $table) {
             $table->id();

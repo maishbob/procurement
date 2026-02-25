@@ -25,7 +25,7 @@ class UserPolicy
         }
 
         // Admins can view all users
-        return $user->hasAnyRole(['admin', 'super_admin'])
+        return $user->hasAnyRole(['admin', 'super-admin'])
             && $user->hasPermission('users.manage');
     }
 
@@ -34,7 +34,7 @@ class UserPolicy
      */
     public function create(User $user): bool
     {
-        return $user->hasAnyRole(['admin', 'super_admin'])
+        return $user->hasAnyRole(['admin', 'super-admin'])
             && $user->hasPermission('users.manage');
     }
 
@@ -44,7 +44,7 @@ class UserPolicy
     public function update(User $user, User $userModel): bool
     {
         // Super admin can update anyone
-        if ($user->hasRole('super_admin')) {
+        if ($user->hasRole('super-admin')) {
             return true;
         }
 
@@ -55,7 +55,7 @@ class UserPolicy
 
         // Admin can update other users (but not super_admin users)
         if ($user->hasRole('admin')) {
-            return !$userModel->hasRole('super_admin')
+            return !$userModel->hasRole('super-admin')
                 && $user->hasPermission('users.manage');
         }
 
@@ -68,13 +68,13 @@ class UserPolicy
     public function updateRoles(User $user, User $userModel): bool
     {
         // Only super_admin can assign/change roles
-        if ($user->hasRole('super_admin')) {
+        if ($user->hasRole('super-admin')) {
             return true;
         }
 
         // Admin can change roles except for super_admin users
         if ($user->hasRole('admin')) {
-            return !$userModel->hasRole('super_admin')
+            return !$userModel->hasRole('super-admin')
                 && $user->hasPermission('users.manage');
         }
 
@@ -87,13 +87,13 @@ class UserPolicy
     public function resetPassword(User $user, User $userModel): bool
     {
         // Super admin can reset anyone's password
-        if ($user->hasRole('super_admin')) {
+        if ($user->hasRole('super-admin')) {
             return true;
         }
 
         // Admin can reset other users' passwords (except super_admin)
         if ($user->hasRole('admin')) {
-            return !$userModel->hasRole('super_admin')
+            return !$userModel->hasRole('super-admin')
                 && $user->hasPermission('users.manage');
         }
 
@@ -106,13 +106,13 @@ class UserPolicy
     public function toggleActive(User $user, User $userModel): bool
     {
         // Only super_admin can deactivate users
-        if ($user->hasRole('super_admin')) {
+        if ($user->hasRole('super-admin')) {
             return true;
         }
 
         // Admin can toggle users (except super_admin)
         if ($user->hasRole('admin')) {
-            return !$userModel->hasRole('super_admin')
+            return !$userModel->hasRole('super-admin')
                 && $user->hasPermission('users.manage');
         }
 
@@ -129,7 +129,7 @@ class UserPolicy
             return false;
         }
 
-        return $user->hasRole('super_admin');
+        return $user->hasRole('super-admin');
     }
 
     /**
@@ -143,7 +143,7 @@ class UserPolicy
         }
 
         // Only admins can view other users' activity
-        return $user->hasAnyRole(['admin', 'super_admin'])
+        return $user->hasAnyRole(['admin', 'super-admin'])
             && $user->hasPermission('audit.view');
     }
 
@@ -158,7 +158,7 @@ class UserPolicy
         }
 
         // Only finance and admin can view approval limits
-        return $user->hasAnyRole(['finance_manager', 'admin', 'super_admin']);
+        return $user->hasAnyRole(['finance_manager', 'admin', 'super-admin']);
     }
 
     /**
@@ -167,6 +167,6 @@ class UserPolicy
     public function updateApprovalLimit(User $user, User $userModel): bool
     {
         // Only super_admin can change approval limits
-        return $user->hasRole('super_admin');
+        return $user->hasRole('super-admin');
     }
 }

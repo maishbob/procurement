@@ -35,8 +35,8 @@
                     </li>
                     <?php endif; ?>
 
-                    <!-- Procurement Group -->
-                    <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->any(['requisitions.view', 'procurement.view', 'purchase-orders.view', 'grn.view', 'suppliers.view'])): ?>
+                    <!-- Always show Requisitions for HODs and anyone with requisitions.view or requisitions.approve-hod -->
+                    <?php if(auth()->user() && (auth()->user()->hasRole(['hod', 'depthead', 'department head']) || auth()->user()->can('requisitions.view') || auth()->user()->can('requisitions.approve-hod'))): ?>
                     <li x-data="{ open: <?php echo e(request()->routeIs('requisitions.*', 'procurement.*', 'purchase-orders.*', 'grn.*', 'suppliers.*') ? 'true' : 'false'); ?> }">
                         <button @click="open = !open" 
                                 class="group flex w-full gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('requisitions.*', 'procurement.*', 'purchase-orders.*', 'grn.*', 'suppliers.*') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
@@ -54,9 +54,20 @@
                         <ul x-show="open" x-cloak class="mt-1 px-2 space-y-1">
                             <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('requisitions.view')): ?>
                             <li>
-                                <a href="<?php echo e(route('requisitions.index')); ?>" 
-                                   class="group flex gap-x-3 rounded-md p-2 pl-9 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('requisitions.*') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
+                                <a href="<?php echo e(route('requisitions.index')); ?>"
+                                   class="group flex gap-x-3 rounded-md p-2 pl-9 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('requisitions.index') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
                                     Requisitions
+                                </a>
+                            </li>
+                            <?php endif; ?>
+                            <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('requisitions.approve-hod')): ?>
+                            <li>
+                                <a href="<?php echo e(route('requisitions.pending-approval')); ?>"
+                                   class="group flex items-center gap-x-3 rounded-md p-2 pl-9 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('requisitions.pending-approval') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
+                                    Pending Approvals
+                                    <?php if(isset($pendingRequisitions) && $pendingRequisitions > 0): ?>
+                                        <span class="ml-auto w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center"><?php echo e($pendingRequisitions); ?></span>
+                                    <?php endif; ?>
                                 </a>
                             </li>
                             <?php endif; ?>
@@ -108,7 +119,7 @@
                     <?php endif; ?>
 
                     <!-- Finance Group -->
-                    <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->any(['finance.view', 'budget.view'])): ?>
+                    <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->any(['invoices.view', 'budget.view'])): ?>
                     <li x-data="{ open: <?php echo e(request()->routeIs('budgets.*', 'invoices.*', 'payments.*') ? 'true' : 'false'); ?> }">
                         <button @click="open = !open" 
                                 class="group flex w-full gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('budgets.*', 'invoices.*', 'payments.*') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
@@ -147,7 +158,7 @@
                                 </a>
                             </li>
                             <?php endif; ?>
-                            <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('finance.view')): ?>
+                            <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('invoices.view')): ?>
                             <li>
                                 <a href="<?php echo e(route('invoices.index')); ?>" 
                                    class="group flex gap-x-3 rounded-md p-2 pl-9 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('invoices.*') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
@@ -161,8 +172,8 @@
                                 </a>
                             </li>
                             <li>
-                                <a href="#" 
-                                   class="group flex gap-x-3 rounded-md p-2 pl-9 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('wht-certificates.*') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
+                                <a href="<?php echo e(route('payments.wht-list')); ?>" 
+                                   class="group flex gap-x-3 rounded-md p-2 pl-9 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('payments.wht-list', 'payments.wht-certificate', 'payments.wht-bulk-download') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
                                     WHT Certificates
                                 </a>
                             </li>
@@ -183,7 +194,7 @@
                     </li>
 
                     <!-- Reports -->
-                    <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('reports.generate')): ?>
+                    <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->any(['reports.procurement', 'reports.financial', 'reports.inventory', 'reports.compliance', 'reports.audit'])): ?>
                     <li x-data="{ open: <?php echo e(request()->routeIs('reports.*') ? 'true' : 'false'); ?> }">
                         <button @click="open = !open"
                                 class="group flex w-full gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('reports.*') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
@@ -215,14 +226,10 @@
             </li>
 
             <!-- Admin Section -->
-            <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->any(['users.manage', 'admin.roles', 'system.configure', 'departments.manage'])): ?>
-
-
-            <li x-data="{ open: <?php echo e(request()->routeIs('admin.users.*', 'settings.*', 'departments.*') ? 'true' : 'false'); ?> }">
-
+            <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->any(['users.manage', 'roles.manage', 'system.configure', 'departments.manage'])): ?>
+            <li x-data="{ open: <?php echo e(request()->routeIs('admin.users.*', 'admin.settings.*', 'departments.*') ? 'true' : 'false'); ?> }">
                 <button @click="open = !open" 
-                        class="group flex w-full gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('admin.users.*', 'settings.*', 'departments.*') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
-
+                        class="group flex w-full gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('admin.users.*', 'admin.settings.*', 'departments.*') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
                     <svg class="h-6 w-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
                         <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -234,7 +241,6 @@
                 </button>
                 <ul x-show="open" x-cloak class="mt-1 px-2 space-y-1">
                     <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('users.manage')): ?>
-
                     <li>
                         <a href="<?php echo e(route('admin.users.index')); ?>" 
                            class="group flex gap-x-3 rounded-md p-2 pl-9 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('admin.users.*') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
@@ -259,11 +265,9 @@
                     <?php endif; ?>
                     
                     <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('system.configure')): ?>
-
                     <li>
-                        <a href="<?php echo e(route('settings.index')); ?>" 
-                           class="group flex gap-x-3 rounded-md p-2 pl-9 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('settings.*') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
-
+                        <a href="<?php echo e(route('admin.settings.index')); ?>" 
+                           class="group flex gap-x-3 rounded-md p-2 pl-9 text-sm leading-6 font-semibold <?php echo e(request()->routeIs('admin.settings.*') ? 'bg-primary-700 text-white' : 'text-primary-200 hover:text-white hover:bg-primary-700'); ?>">
                             <svg class="h-6 w-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />

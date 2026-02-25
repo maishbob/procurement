@@ -12,6 +12,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('annual_procurement_plan_items');
+        Schema::dropIfExists('annual_procurement_plans');
+        Schema::enableForeignKeyConstraints();
+
         Schema::create('annual_procurement_plans', function (Blueprint $table) {
             $table->id();
             $table->string('plan_number')->unique();

@@ -12,7 +12,13 @@
       "Bash(php artisan db:show:*)",
       "Bash(php artisan db:table:*)",
       "Bash(php:*)",
-      "Bash(php -l:*)"
+      "Bash(php -l:*)",
+      "Bash(unzip:*)",
+      "Bash(powershell -Command \"Compress-Archive -Path ''diagnostic.php'',''artisan-web.php'' -DestinationPath ''tools.zip'' -Force\")",
+      "Bash(powershell -Command \":*)",
+      "Bash(python3:*)",
+      "Bash(grep:*)",
+      "Bash(head -10 grep -rn \"users.manage\\\\|users_manage\" /c/laragon/www/procurement/database/seeders/)"
     ]
   }
 }

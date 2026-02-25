@@ -134,4 +134,28 @@ class BudgetLinePolicy
     {
         return $user->hasAnyRole(['finance-manager', 'admin', 'super-admin']);
     }
+
+    /**
+     * Determine if the user can submit a budget line for approval.
+     */
+    public function submit(User $user, BudgetLine $budgetLine): bool
+    {
+        return $user->hasPermission('budget.manage') || $user->hasRole('super-admin');
+    }
+
+    /**
+     * Determine if the user can approve a budget line.
+     */
+    public function approve(User $user, BudgetLine $budgetLine): bool
+    {
+        return $user->hasPermission('budget.approve') || $user->hasRole('super-admin');
+    }
+
+    /**
+     * Determine if the user can reject a budget line.
+     */
+    public function reject(User $user, BudgetLine $budgetLine): bool
+    {
+        return $this->approve($user, $budgetLine);
+    }
 }

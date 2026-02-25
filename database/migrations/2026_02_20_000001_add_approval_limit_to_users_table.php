@@ -9,7 +9,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->unsignedBigInteger('approval_limit')->nullable()->after('is_active');
+            if (!Schema::hasColumn('users', 'approval_limit')) {
+                $table->unsignedBigInteger('approval_limit')->nullable()->after('is_active');
+            }
         });
     }
 

@@ -14,9 +14,10 @@ class Kernel extends ConsoleKernel
      * @return void
      */
     protected function schedule(Schedule $schedule)
+    {
         // WHT temp file cleanup (daily at 3am)
         $schedule->command('wht:cleanup-temp')->dailyAt('03:00');
-    {
+
         // Budget threshold checks (hourly)
         $schedule->command('procurement:check-budget-thresholds')->hourly();
 

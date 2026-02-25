@@ -13,7 +13,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('departments', function (Blueprint $table) {
-            $table->enum('category', ['Academic', 'Operations'])->default('Operations')->after('name');
+            if (!Schema::hasColumn('departments', 'category')) {
+                $table->enum('category', ['Academic', 'Operations'])->default('Operations')->after('name');
+            }
         });
 
         // Update existing departments with appropriate categories

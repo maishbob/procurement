@@ -20,7 +20,7 @@
         <form method="POST" action="{{ $user ? route('admin.users.update', $user) : route('admin.users.store') }}" class="p-6 space-y-6">
             @csrf
             @if($user)
-                @method('PUT')
+                @method('PATCH')
             @endif
 
             <!-- Basic Information -->

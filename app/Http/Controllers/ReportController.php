@@ -20,7 +20,7 @@ class ReportController extends Controller
     {
         $this->authorize('viewAny', \App\Models\Requisition::class);
 
-        return view('reports.index');
+        return redirect()->route('reports.dashboard');
     }
 
     /**
@@ -40,17 +40,22 @@ class ReportController extends Controller
 
         // Determine current quarter within fiscal year
         $month = $now->month;
-        $quarter = match(true) {
-            $month >= 7 && $month <= 9  => 'Q1',
+        $quarter = match (true) {
+            $month >= 7 && $month <= 9   => 'Q1',
             $month >= 10 && $month <= 12 => 'Q2',
             $month >= 1 && $month <= 3   => 'Q3',
-            default                       => 'Q4',
+            default                      => 'Q4',
         };
 
         $data        = $this->kpiDashboardService->getFiscalYearKpis($fiscalYear);
         $quarterData = $this->kpiDashboardService->getQuarterlyKpis($fiscalYear, $quarter);
 
         return view('reports.dashboard', compact('data', 'quarterData', 'fiscalYear', 'quarter'));
+    }
+
+    public function show($id)
+    {
+        abort(404);
     }
 
     /**

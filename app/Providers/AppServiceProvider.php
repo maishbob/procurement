@@ -18,6 +18,7 @@ use App\Observers\PurchaseOrderObserver;
 use App\Observers\RequisitionObserver;
 use App\Observers\SupplierInvoiceObserver;
 use App\Observers\SupplierObserver;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -55,5 +56,20 @@ class AppServiceProvider extends ServiceProvider
         SupplierInvoice::observe(SupplierInvoiceObserver::class);
         Supplier::observe(SupplierObserver::class);
         InventoryItem::observe(InventoryItemObserver::class);
+
+        // Share the pending-requisitions count with the sidebar so the badge
+        // is visible on every page for HODs (not just the requisitions index).
+        View::composer('layouts.partials.sidebar', function ($view) {
+            if (auth()->check()) {
+                $user = auth()->user();
+                $pendingRequisitions = 0;
+                if ($user->hasPermissionTo('requisitions.approve-hod')) {
+                    $pendingRequisitions = Requisition::where('department_id', $user->department_id)
+                        ->whereIn('status', ['submitted', 'hod_review'])
+                        ->count();
+                }
+                $view->with('pendingRequisitions', $pendingRequisitions);
+            }
+        });
     }
 }

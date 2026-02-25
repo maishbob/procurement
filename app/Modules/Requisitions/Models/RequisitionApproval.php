@@ -13,6 +13,7 @@ class RequisitionApproval extends Model
     protected $fillable = [
         'requisition_id',
         'approval_level',
+        'sequence',
         'approver_id',
         'status',
         'comments',

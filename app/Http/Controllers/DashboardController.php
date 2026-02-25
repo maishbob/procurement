@@ -27,21 +27,17 @@ class DashboardController extends Controller
     public function index(Request $request)
     {
         $user = auth()->user();
+        $fiscalYear = session('current_fiscal_year', date('Y'));
 
         return view('dashboard.index', [
-            'stats' => [
-                'pending_approvals' => 0,
-                'active_requisitions' => 0,
-                'budget_utilization' => 0,
-                'low_stock_items' => 0,
-            ],
-            'recentRequisitions' => [],
-            'pendingApprovals' => [],
-            'lowStockItems' => [],
-            'pendingInvoices' => [],
-            'budgetStatus' => [],
-            'activityFeed' => [],
-            'fiscalYear' => date('Y'),
+            'stats'               => $this->getStats($user, $fiscalYear),
+            'recentRequisitions'  => $this->getRecentRequisitions($user),
+            'pendingApprovals'    => $this->getPendingApprovals($user),
+            'lowStockItems'       => $this->getLowStockItems(),
+            'pendingInvoices'     => $this->getPendingInvoices($user),
+            'budgetStatus'        => $this->getBudgetStatus($user),
+            'activityFeed'        => $this->getActivityFeed($user),
+            'fiscalYear'          => $fiscalYear,
         ]);
     }
 
@@ -69,7 +65,7 @@ class DashboardController extends Controller
         if ($user->hasPermission('approve_requisition')) {
             $stats['pending_approvals'] = Requisition::whereHas('approvals', function ($q) {
                 $q->where('status', 'pending')
-                    ->where('required_level', $this->getApprovalLevel($q->getModel()->user));
+                    ->where('approval_level', $this->getApprovalLevel($q->getModel()->user));
             })->count();
         }
 
@@ -146,7 +142,7 @@ class DashboardController extends Controller
 
         return Requisition::whereHas('approvals', function ($query) use ($user, $approvalLevel) {
             $query->where('status', 'pending')
-                ->where('required_level', $approvalLevel);
+                ->where('approval_level', $approvalLevel);
         })
             ->with('creator', 'department')
             ->orderBy('created_at', 'desc')
@@ -215,11 +211,10 @@ class DashboardController extends Controller
             ->selectRaw('
                 id,
                 action,
-                model_type,
-                model_id,
+                auditable_type,
+                auditable_id,
                 created_at,
-                status_code,
-                CONCAT(action, " - ", model_type) as description
+                CONCAT(action, " - ", auditable_type) as description
             ')
             ->orderBy('created_at', 'desc')
             ->limit($limit)

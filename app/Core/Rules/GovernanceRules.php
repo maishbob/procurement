@@ -207,10 +207,8 @@ class GovernanceRules
 
         $levels = [];
 
-        // Always need HOD for anything above HOD threshold
-        if ($amount >= $thresholds['hod_approval']) {
-            $levels[] = 'hod';
-        }
+        // All requisitions must be approved by the Department Head
+        $levels[] = 'hod';
 
         // Need Principal approval
         if ($amount >= $thresholds['principal_approval']) {
