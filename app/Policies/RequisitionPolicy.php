@@ -63,15 +63,19 @@ class RequisitionPolicy
         }
 
         // HOD approves department requisitions awaiting HOD sign-off
-        if ($user->hasPermissionTo('requisitions.approve-hod')
+        if (
+            $user->hasPermissionTo('requisitions.approve-hod')
             && $user->department_id === $requisition->department_id
-            && in_array($requisition->status, ['submitted', 'hod_review'])) {
+            && in_array($requisition->status, ['submitted', 'hod_review'])
+        ) {
             return true;
         }
 
         // Principal / super-admin can approve at their level
-        if ($user->hasRole(['principal', 'super-admin'])
-            && $user->hasPermissionTo('requisitions.approve-principal')) {
+        if (
+            $user->hasRole(['principal', 'super-admin'])
+            && $user->hasPermissionTo('requisitions.approve-principal')
+        ) {
             return true;
         }
 
@@ -92,14 +96,18 @@ class RequisitionPolicy
      */
     public function cancel(User $user, Requisition $requisition): bool
     {
-        if ($user->id === $requisition->requested_by
-            && in_array($requisition->status, ['draft', 'submitted'])) {
+        if (
+            $user->id === $requisition->requested_by
+            && in_array($requisition->status, ['draft', 'submitted'])
+        ) {
             return true;
         }
 
-        if ($user->hasRole('hod')
+        if (
+            $user->hasRole('hod')
             && $user->department_id === $requisition->department_id
-            && in_array($requisition->status, ['submitted', 'hod_review'])) {
+            && in_array($requisition->status, ['submitted', 'hod_review'])
+        ) {
             return true;
         }
 

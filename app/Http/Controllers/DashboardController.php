@@ -95,7 +95,7 @@ class DashboardController extends Controller
 
         // Low stock items
         if ($user->hasPermission('view_inventory')) {
-            $stats['low_stock_items'] = InventoryItem::whereHas('stockLevels', function($q) {
+            $stats['low_stock_items'] = InventoryItem::whereHas('stockLevels', function ($q) {
                 $q->whereRaw('stock_levels.quantity_on_hand <= inventory_items.reorder_point');
             })->count();
         }
@@ -155,10 +155,10 @@ class DashboardController extends Controller
      */
     private function getLowStockItems($limit = 5)
     {
-        return InventoryItem::whereHas('stockLevels', function($q) {
+        return InventoryItem::whereHas('stockLevels', function ($q) {
             $q->whereRaw('stock_levels.quantity_on_hand <= inventory_items.reorder_point');
         })
-            ->with(['stockLevels' => function($q) { }])
+            ->with(['stockLevels' => function ($q) {}])
             ->limit($limit)
             ->get();
     }
